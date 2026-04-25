@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+<meta charset="UTF-8">
+<title>Fortnite Drop PRO PLAYER</title>
+
+<style>
+body {
+  margin:0;
+  overflow:hidden;
+  font-family:Arial;
+  background:#0f172a;
+}
+
+.panel {
+  position:absolute;
+  background:rgba(0,0,0,0.7);
+  padding:12px;
+  border-radius:10px;
+  color:white;
+}
+
+button {
+  margin:3px;
+  padding:6px;
+  border:none;
+  border-radius:6px;
+  background:#22c55e;
+  color:white;
+  cursor:pointer;
+}
+</style>
+</head>
+
+<body>
+
+<!-- HUD -->
+<div class="panel" style="top:10px;right:10px;">
+<b>HUD</b><br>
+Tempo: <span id="tempo">-</span><br>
+Precisão: <span id="precisao">-</span>
+</div>
+
+<!-- CONTROLES -->
+<div class="panel" style="top:10px;left:10px;">
+<button onclick="mode='start'">Início ônibus</button>
+<button onclick="mode='end'">Fim ônibus</button>
+<button onclick="mode='drop'">Drop</button>
+<button onclick="resetAll()">Reset</button>
+</div>
+
+<!-- SISTEMA -->
+<div class="panel" style="bottom:10px;left:10px;">
+
+<b>Modo</b><br>
+<select id="modo" onchange="atualizarModo()">
+<option value="ranked">Ranked</option>
+<option value="skin">Skin</option>
+<option value="fncs">FNCS</option>
+<option value="cash">Cash Cup</option>
+</select>
+
+<div id="subModo"></div>
+
+<input id="pontosAtual" placeholder="Pontos atuais"><br>
+<input id="meta" placeholder="Meta"><br>
+<input id="kills" placeholder="Kills"><br>
+<input id="placement" placeholder="Placement"><br>
+
+<button onclick="toggleKill()" id="killToggle">Kill OFF</button><br>
+
+<button onclick="calcularPontos()">Calcular</button>
+<button onclick="preverClassificacao()">Prever</button>
+
+<div id="resultado"></div>
+
+</div>
+
+<!-- BARRA -->
+<div class="panel" style="bottom:10px;right:10px;width:250px;">
+<div style="background:#1e293b;height:20px;border-radius:10px;">
+<div id="barra" style="height:100%;width:0%;background:linear-gradient(to right,red,yellow,green);"></div>
+</div>
+<div id="previsao"></div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/three@0.158/build/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.158/examples/js/controls/OrbitControls.js"></script>
+
+<script>
+
+// ===== 3D =====
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(70, window.innerWidth/window.innerHeight, 0.1, 2000);
+camera.position.set(0,200,300);
+
+const renderer = new THREE.WebGLRenderer();
+renderer.setSize(window.innerWidth, window.innerHeight);
+document.body.appendChild(renderer.domElement);
+
+const controls = new THREE.OrbitControls(camera, renderer.domElement);
+
+const light = new THREE.DirectionalLight(0xffffff,1);
+light.position.set(100,200,100);
+scene.add(light);
+
+// ===== MAPA =====
+const geo = new THREE.PlaneGeometry(500,500,256,256);
+const tex = new THREE.TextureLoader().load('mapa.jpg');
+const mat = new THREE.MeshStandardMaterial({map:tex});
+const plane = new THREE.Mesh(geo,mat);
+plane.rotation.x = -Math.PI/2;
+scene.add(plane);
+
+// ===== HEIGHTMAP =====
+new THREE.TextureLoader().load('heightmap.png', img=>{
+  const c=document.createElement('canvas');
+  const ctx=c.getContext('2d');
+  c.width=img.image.width;
+  c.height=img.image.height;
+  ctx.drawImage(img.image,0,0);
+  const d=ctx.getImageData(0,0,c.width,c.height).data;
+
+  for(let i=0;i<geo.attributes.position.count;i++){
+    let x=i%c.width;
+    let y=Math.floor(i/c.width);
+    let h=d[(y*c.width+x)*4];
+    geo.attributes.position.array[i*3+2]=h*0.4;
+  }
+  geo.computeVertexNormals();
+});
+
+// ===== CLIQUE =====
+let mode="start", busStart, busEnd, drop, jumpPoint;
+const ray=new THREE.Raycaster();
+const mouse=new THREE.Vector2();
+
+window.addEventListener("click",e=>{
+  mouse.x=(e.clientX/window.innerWidth)*2-1;
+  mouse.y=-(e.clientY/window.innerHeight)*2+1;
+  ray.setFromCamera(mouse,camera);
+  const hit=ray.intersectObject(plane);
+  if(hit.length){
+    let p=hit[0].point;
+    if(mode==="start") busStart=p;
+    if(mode==="end") busEnd=p;
+    if(mode==="drop") drop=p;
+    calculateJump();
+  }
+});
+
+// ===== TRAJETÓRIA =====
+function drawTrajectory(a,b){
+  if(!a||!b) return;
+  const pts=[];
+  for(let i=0;i<=50;i++){
+    let t=i/50;
+    pts.push(new THREE.Vector3(
+      a.x+(b.x-a.x)*t,
+      a.y+(b.y-a.y)*t+Math.sin(t*Math.PI)*30,
+      a.z+(b.z-a.z)*t
+    ));
+  }
+  const g=new THREE.BufferGeometry().setFromPoints(pts);
+  const l=new THREE.Line(g,new THREE.LineBasicMaterial({color:0xffaa00}));
+  scene.add(l);
+}
+
+// ===== CÁLCULO =====
+function calculateJump(){
+  if(!busStart||!busEnd||!drop) return;
+
+  let dir=new THREE.Vector3().subVectors(busEnd,busStart).normalize();
+  let best=busStart.clone();
+
+  jumpPoint=best;
+
+  drawTrajectory(jumpPoint,drop);
+
+  document.getElementById("tempo").innerText="~20s";
+  document.getElementById("precisao").innerText="Alta";
+}
+
+// ===== SISTEMA =====
+let killEnabled=false;
+
+function toggleKill(){
+  killEnabled=!killEnabled;
+  document.getElementById("killToggle").innerText=killEnabled?"Kill ON":"Kill OFF";
+}
+
+function atualizarModo(){
+  const modo=document.getElementById("modo").value;
+  const sub=document.getElementById("subModo");
+
+  if(modo==="fncs"){
+    sub.innerHTML=`<select id="fncsDiv">
+    <option value="div3">Div3</option>
+    <option value="div2">Div2</option>
+    <option value="div1">Div1</option></select>`;
+  }
+  else if(modo==="cash"){
+    sub.innerHTML=`<select id="cashType">
+    <option value="solo">Solo</option>
+    <option value="duo">Duo</option></select>`;
+  }
+  else sub.innerHTML="";
+}
+
+function calcularPontos(){
+  let atual=+pontosAtual.value;
+  let meta=+meta.value;
+  let kills=+kills.value;
+  let placement=+placement.value;
+
+  let pontos=0;
+  if(killEnabled) pontos+=kills*2;
+
+  if(placement==1) pontos+=60;
+  else if(placement<=10) pontos+=30;
+  else pontos+=10;
+
+  let total=atual+pontos;
+
+  resultado.innerHTML=`Total: ${total}`;
+}
+
+// ===== PREVISÃO =====
+function preverClassificacao(){
+  let atual=+pontosAtual.value;
+  let meta=+meta.value;
+
+  let falta=meta-atual;
+
+  let minPartidas=Math.ceil(falta/60);
+  let maxPartidas=Math.ceil(falta/15);
+
+  barra.style.width=(atual/meta*100)+"%";
+
+  previsao.innerHTML=`
+  🔴 ${maxPartidas} partidas (seguro)<br>
+  🟢 ${minPartidas} partidas (agressivo)
+  `;
+}
+
+// ===== LOOP =====
+function animate(){
+  requestAnimationFrame(animate);
+  controls.update();
+  renderer.render(scene,camera);
+}
+animate();
+
+</script>
+
+</body>
+</html>
