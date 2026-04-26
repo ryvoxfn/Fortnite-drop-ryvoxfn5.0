@@ -2,41 +2,41 @@
 <html lang="pt-br">
 <head>
 <meta charset="UTF-8">
-<title>FNCS DROP PRO</title>
+<title>Drop Perfeito</title>
 
 <style>
-body {
-    margin: 0;
-    background: #0b0f1a;
-    color: white;
-    font-family: Arial;
-    text-align: center;
+body{
+    margin:0;
+    background:#0b0f1a;
+    font-family:Arial;
+    color:white;
+    text-align:center;
 }
 
-h1 { margin: 15px; }
-
-.controls { margin: 10px; }
-
-button {
-    background: #00ff88;
-    border: none;
-    padding: 10px;
-    margin: 5px;
-    border-radius: 8px;
-    cursor: pointer;
-    font-weight: bold;
+.controls{
+    margin:10px;
 }
 
-canvas {
-    border-radius: 12px;
-    cursor: grab;
+button{
+    padding:10px;
+    margin:5px;
+    border:none;
+    border-radius:8px;
+    background:#00ff88;
+    font-weight:bold;
+    cursor:pointer;
+}
+
+canvas{
+    margin-top:10px;
+    border-radius:12px;
 }
 </style>
 </head>
 
 <body>
 
-<h1>🎯 FNCS DROP PRO</h1>
+<h2>🎯 Drop Perfeito</h2>
 
 <div class="controls">
     <button onclick="modo='start'">Início ônibus</button>
@@ -56,200 +56,102 @@ mapa.src = "mapa.jpg";
 
 let modo = "start";
 
-let busStart = null;
-let busEnd = null;
+let start = null;
+let end = null;
 let drop = null;
 
-// ================= ZOOM / PAN =================
-let scale = 1;
-let offsetX = 0;
-let offsetY = 0;
-let dragging = false;
-let lastX, lastY;
-
-canvas.addEventListener("mousedown", e=>{
-    dragging = true;
-    lastX = e.clientX;
-    lastY = e.clientY;
-});
-
-canvas.addEventListener("mouseup", ()=> dragging = false);
-
-canvas.addEventListener("mousemove", e=>{
-    if(dragging){
-        offsetX += e.clientX - lastX;
-        offsetY += e.clientY - lastY;
-        lastX = e.clientX;
-        lastY = e.clientY;
-        desenhar();
-    }
-});
-
-canvas.addEventListener("wheel", e=>{
-    e.preventDefault();
-    const zoom = e.deltaY < 0 ? 1.1 : 0.9;
-    scale *= zoom;
-    desenhar();
-});
-
-// ================= CLIQUE =================
-canvas.addEventListener("click", e=>{
+// clique
+canvas.onclick = (e)=>{
     const rect = canvas.getBoundingClientRect();
+    const x = (e.clientX - rect.left)*(canvas.width/rect.width);
+    const y = (e.clientY - rect.top)*(canvas.height/rect.height);
 
-    const x = (e.clientX - rect.left - offsetX)/scale;
-    const y = (e.clientY - rect.top - offsetY)/scale;
-
-    if(modo === "start") busStart = {x,y};
-    if(modo === "end") busEnd = {x,y};
-    if(modo === "drop") drop = {x,y};
+    if(modo==="start") start = {x,y};
+    if(modo==="end") end = {x,y};
+    if(modo==="drop") drop = {x,y};
 
     desenhar();
-});
-
-function reset(){
-    busStart = busEnd = drop = null;
-    desenhar();
-}
-
-// ================= FNCS SYSTEM =================
-const FNCS = {
-    placement: {1:65,2:56,3:52,4:48,5:44,6:40,7:38,8:36,9:34,10:32},
-    kill: 2
 };
 
-function calcularPontos(partidas, placement, kills){
-    let total = 0;
-
-    for(let i=0;i<partidas;i++){
-        total += (FNCS.placement[Math.round(placement)]||0) + (kills*FNCS.kill);
-    }
-
-    return total;
+function reset(){
+    start = end = drop = null;
+    desenhar();
 }
 
-// ================= IA MELHOR GOD =================
-function melhorGod(){
-    const dx = busEnd.x - busStart.x;
-    const dy = busEnd.y - busStart.y;
+// cálculo simples (igual copilot)
+function calcularAfundar(){
+    if(!start || !end || !drop) return null;
+
+    const dx = end.x - start.x;
+    const dy = end.y - start.y;
 
     const len = Math.hypot(dx,dy);
+
     const nx = dx/len;
     const ny = dy/len;
 
-    const px = -ny;
-    const py = nx;
+    const DISTANCIA = 280; // ajuste fino
 
-    let best = null;
-    let bestScore = Infinity;
-
-    for(let d=200; d<=400; d+=20){
-        for(let lat=-120; lat<=120; lat+=20){
-
-            const x = drop.x - nx*d + px*lat;
-            const y = drop.y - ny*d + py*lat;
-
-            const dist = Math.hypot(drop.x-x, drop.y-y);
-            const tempo = dist / 120;
-
-            const score = tempo + Math.abs(lat)*0.01;
-
-            if(score < bestScore){
-                bestScore = score;
-                best = {x,y,tempo};
-            }
-        }
-    }
-
-    return best;
+    return {
+        x: drop.x - nx*DISTANCIA,
+        y: drop.y - ny*DISTANCIA
+    };
 }
 
-// ================= SETA ÔNIBUS =================
-function seta(x,y,dx,dy){
-    const ang = Math.atan2(dy,dx);
-
-    ctx.save();
-    ctx.translate(x,y);
-    ctx.rotate(ang);
-
-    ctx.fillStyle="white";
-    ctx.beginPath();
-    ctx.moveTo(0,0);
-    ctx.lineTo(-8,-4);
-    ctx.lineTo(-8,4);
-    ctx.closePath();
-    ctx.fill();
-
-    ctx.restore();
-}
-
-// ================= DESENHAR =================
+// desenhar
 function desenhar(){
-
-    ctx.setTransform(1,0,0,1,0,0);
     ctx.clearRect(0,0,canvas.width,canvas.height);
-
-    ctx.setTransform(scale,0,0,scale,offsetX,offsetY);
     ctx.drawImage(mapa,0,0,canvas.width,canvas.height);
 
-    // ônibus direção
-    if(busStart && busEnd){
-        const dx = busEnd.x - busStart.x;
-        const dy = busEnd.y - busStart.y;
-
-        for(let i=0;i<25;i++){
-            const t = i/25;
-            const x = busStart.x + dx*t;
-            const y = busStart.y + dy*t;
-            seta(x,y,dx,dy);
-        }
+    // linha ônibus
+    if(start && end){
+        ctx.strokeStyle="#00ffff";
+        ctx.lineWidth=2;
+        ctx.beginPath();
+        ctx.moveTo(start.x,start.y);
+        ctx.lineTo(end.x,end.y);
+        ctx.stroke();
     }
 
-    // IA drop
-    if(busStart && busEnd && drop){
+    const af = calcularAfundar();
 
-        const best = melhorGod();
+    if(af && drop){
 
-        const control = {
-            x: (best.x + drop.x)/2,
-            y: (best.y + drop.y)/2 - 80
-        };
-
-        // curva
+        // linha principal
         ctx.strokeStyle="yellow";
         ctx.lineWidth=3;
         ctx.beginPath();
-        ctx.moveTo(best.x,best.y);
-        ctx.quadraticCurveTo(control.x,control.y,drop.x,drop.y);
+        ctx.moveTo(af.x,af.y);
+        ctx.lineTo(drop.x,drop.y);
         ctx.stroke();
 
-        // ponto IA
+        // ponto afundar
         ctx.fillStyle="yellow";
         ctx.beginPath();
-        ctx.arc(best.x,best.y,10,0,Math.PI*2);
+        ctx.arc(af.x,af.y,8,0,Math.PI*2);
         ctx.fill();
+    }
 
-        // drop
+    // drop
+    if(drop){
         ctx.fillStyle="red";
         ctx.beginPath();
-        ctx.arc(drop.x,drop.y,8,0,Math.PI*2);
-        ctx.fill();
-
-        // tempo
-        ctx.fillStyle="white";
-        ctx.fillText(best.tempo.toFixed(1)+"s", best.x+10, best.y-10);
-    }
-
-    if(busStart){
-        ctx.fillStyle="#00ffff";
-        ctx.beginPath();
-        ctx.arc(busStart.x,busStart.y,6,0,Math.PI*2);
+        ctx.arc(drop.x,drop.y,7,0,Math.PI*2);
         ctx.fill();
     }
 
-    if(busEnd){
+    // ônibus pontos
+    if(start){
         ctx.fillStyle="#00ffff";
         ctx.beginPath();
-        ctx.arc(busEnd.x,busEnd.y,6,0,Math.PI*2);
+        ctx.arc(start.x,start.y,6,0,Math.PI*2);
+        ctx.fill();
+    }
+
+    if(end){
+        ctx.fillStyle="#00ffff";
+        ctx.beginPath();
+        ctx.arc(end.x,end.y,6,0,Math.PI*2);
         ctx.fill();
     }
 }
