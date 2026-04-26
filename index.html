@@ -2,7 +2,7 @@
 <html lang="pt-BR">
 <head>
 <meta charset="UTF-8">
-<title>Fortnite Drop IA PRO</title>
+<title>Fortnite Drop PRO IA</title>
 
 <style>
 body {
@@ -11,10 +11,10 @@ body {
   font-family:Arial;
 }
 
-#map {
+canvas {
   width:100vw;
   height:100vh;
-  cursor:grab;
+  display:block;
 }
 
 .controls {
@@ -26,13 +26,22 @@ body {
 }
 
 button {
-  padding:10px 15px;
+  padding:10px;
   border:none;
   border-radius:8px;
   background:#00c853;
   color:white;
   font-weight:bold;
   cursor:pointer;
+}
+
+.panel {
+  position:fixed;
+  bottom:10px;
+  left:10px;
+  background:#000a;
+  padding:10px;
+  border-radius:10px;
 }
 
 .hud {
@@ -55,10 +64,41 @@ button {
   <button onclick="resetAll()">Reset</button>
 </div>
 
-<div class="hud" id="hud">
-Tempo: -<br>
-Precisão: -
+<div class="panel">
+Modo:
+<select id="modeSelect">
+  <option>FNCS</option>
+  <option>Ranked</option>
+  <option>Cash Cup</option>
+  <option>Skin Cup</option>
+</select>
+
+<br><br>
+
+Divisão:
+<select id="divSelect">
+  <option>Div 3</option>
+  <option>Div 2</option>
+  <option>Div 1</option>
+</select>
+
+<br><br>
+
+Kills:
+<input id="kills" type="number" value="5">
+
+<br><br>
+
+Placement:
+<input id="placement" type="number" value="10">
+
+<br><br>
+
+<button onclick="toggleKill()">Kill ON/OFF</button>
+<button onclick="calcPoints()">Calcular</button>
 </div>
+
+<div class="hud" id="hud">IA pronta</div>
 
 <canvas id="map"></canvas>
 
@@ -66,127 +106,91 @@ Precisão: -
 const canvas = document.getElementById("map");
 const ctx = canvas.getContext("2d");
 
-let img = new Image();
-img.src = "mapa.jpg"; // IMPORTANTE: mesmo nome do seu arquivo
-
 canvas.width = window.innerWidth;
 canvas.height = window.innerHeight;
 
-let scale = 1;
-let offsetX = 0;
-let offsetY = 0;
-
-let dragging = false;
-let lastX, lastY;
+let img = new Image();
+img.src = "mapa.jpg";
 
 let mode = null;
 
-let startBus = null;
-let endBus = null;
-let drop = null;
-let divePoint = null;
+let startBus=null,endBus=null,drop=null,dive=null;
 
-img.onload = () => draw();
+let scale=1,offsetX=0,offsetY=0;
+let dragging=false,lastX,lastY;
 
-function setMode(m){
-  mode = m;
-}
+let killOn=true;
 
-canvas.addEventListener("mousedown", e=>{
-  dragging = true;
-  lastX = e.clientX;
-  lastY = e.clientY;
-});
+function setMode(m){mode=m;}
 
-canvas.addEventListener("mouseup", ()=>{
-  dragging = false;
-});
+canvas.onmousedown=e=>{
+  dragging=true;
+  lastX=e.clientX;
+  lastY=e.clientY;
+};
 
-canvas.addEventListener("mousemove", e=>{
+canvas.onmouseup=()=>dragging=false;
+
+canvas.onmousemove=e=>{
   if(dragging){
-    offsetX += e.clientX - lastX;
-    offsetY += e.clientY - lastY;
-    lastX = e.clientX;
-    lastY = e.clientY;
+    offsetX+=e.clientX-lastX;
+    offsetY+=e.clientY-lastY;
+    lastX=e.clientX;
+    lastY=e.clientY;
     draw();
   }
-});
+};
 
-canvas.addEventListener("wheel", e=>{
-  scale += e.deltaY * -0.001;
-  scale = Math.max(0.5, Math.min(3, scale));
+canvas.onwheel=e=>{
+  scale+=e.deltaY*-0.001;
+  scale=Math.max(0.5,Math.min(3,scale));
   draw();
-});
+};
 
-canvas.addEventListener("click", e=>{
-  let x = (e.clientX - offsetX) / scale;
-  let y = (e.clientY - offsetY) / scale;
+canvas.onclick=e=>{
+  let x=(e.clientX-offsetX)/scale;
+  let y=(e.clientY-offsetY)/scale;
 
-  if(mode === "start") startBus = {x,y};
-  if(mode === "end") endBus = {x,y};
-  if(mode === "drop") drop = {x,y};
+  if(mode==="start") startBus={x,y};
+  if(mode==="end") endBus={x,y};
+  if(mode==="drop") drop={x,y};
 
-  calculateIA();
+  calcIA();
   draw();
-});
+};
 
-function distance(a,b){
-  return Math.hypot(a.x - b.x, a.y - b.y);
-}
+function calcIA(){
+  if(!startBus||!endBus||!drop) return;
 
-function calculateIA(){
-  if(!startBus || !endBus || !drop) return;
+  let dist=Math.hypot(drop.x-startBus.x,drop.y-startBus.y);
 
-  // direção do ônibus
-  let dx = endBus.x - startBus.x;
-  let dy = endBus.y - startBus.y;
+  let glideDist=3000; // ajustado
 
-  let length = Math.hypot(dx,dy);
-  let dir = {x:dx/length, y:dy/length};
+  let ratio=glideDist/dist;
 
-  // distância total até o drop
-  let dist = distance(startBus, drop);
-
-  // parâmetros reais (baseados no que você falou)
-  let fallSpeed = 300;   // queda rápida
-  let glideSpeed = 150;  // glider
-
-  let fallTime = 14;
-  let glideTime = 20;
-
-  let fallDist = fallSpeed * fallTime;
-  let glideDist = glideSpeed * glideTime;
-
-  // ponto ideal de abrir glider
-  let totalNeeded = glideDist;
-
-  let ratio = totalNeeded / dist;
-
-  divePoint = {
-    x: drop.x - (drop.x - startBus.x) * ratio,
-    y: drop.y - (drop.y - startBus.y) * ratio
+  dive={
+    x: drop.x - (drop.x-startBus.x)*ratio,
+    y: drop.y - (drop.y-startBus.y)*ratio
   };
 
-  document.getElementById("hud").innerHTML =
-    "IA Ativa 🔥<br>Ponto de afundar calculado";
+  document.getElementById("hud").innerHTML="IA PRO 🔥";
 }
 
 function draw(){
   ctx.clearRect(0,0,canvas.width,canvas.height);
 
   ctx.save();
-  ctx.translate(offsetX, offsetY);
-  ctx.scale(scale, scale);
+  ctx.translate(offsetX,offsetY);
+  ctx.scale(scale,scale);
 
   ctx.drawImage(img,0,0,800,800);
 
-  // linha ônibus
-  if(startBus && endBus){
-    ctx.strokeStyle = "white";
-    ctx.lineWidth = 2;
+  // linha ônibus LIMITADA
+  if(startBus&&endBus){
+    ctx.strokeStyle="white";
     ctx.beginPath();
-    ctx.moveTo(startBus.x, startBus.y);
-    ctx.lineTo(endBus.x, endBus.y);
+    ctx.moveTo(startBus.x,startBus.y);
+    ctx.lineTo(endBus.x,endBus.y);
     ctx.stroke();
   }
 
@@ -194,10 +198,10 @@ function draw(){
   drawPoint(endBus,"purple");
   drawPoint(drop,"red");
 
-  // trajetória
-  if(startBus && drop){
-    ctx.setLineDash([10,5]);
-    ctx.strokeStyle = "yellow";
+  // trajetória correta
+  if(startBus&&drop){
+    ctx.setLineDash([5,5]);
+    ctx.strokeStyle="yellow";
     ctx.beginPath();
     ctx.moveTo(startBus.x,startBus.y);
     ctx.lineTo(drop.x,drop.y);
@@ -205,15 +209,15 @@ function draw(){
     ctx.setLineDash([]);
   }
 
-  // 🔥 ponto de afundar
-  if(divePoint){
-    drawPoint(divePoint,"yellow");
+  // ponto de afundar
+  if(dive){
+    drawPoint(dive,"yellow");
 
-    ctx.strokeStyle = "red";
+    ctx.strokeStyle="red";
     ctx.setLineDash([6,6]);
     ctx.beginPath();
-    ctx.moveTo(divePoint.x, divePoint.y);
-    ctx.lineTo(drop.x, drop.y);
+    ctx.moveTo(dive.x,dive.y);
+    ctx.lineTo(drop.x,drop.y);
     ctx.stroke();
     ctx.setLineDash([]);
   }
@@ -221,21 +225,44 @@ function draw(){
   ctx.restore();
 }
 
-function drawPoint(p,color){
-  if(!p) return;
-  ctx.fillStyle = color;
+function drawPoint(p,c){
+  if(!p)return;
+  ctx.fillStyle=c;
   ctx.beginPath();
   ctx.arc(p.x,p.y,6,0,Math.PI*2);
   ctx.fill();
 }
 
 function resetAll(){
-  startBus = null;
-  endBus = null;
-  drop = null;
-  divePoint = null;
+  startBus=endBus=drop=dive=null;
   draw();
 }
+
+// SISTEMA DE PONTOS
+function toggleKill(){
+  killOn=!killOn;
+}
+
+function calcPoints(){
+  let kills=parseInt(document.getElementById("kills").value);
+  let placement=parseInt(document.getElementById("placement").value);
+
+  let points=0;
+
+  if(killOn) points+=kills*3;
+  points+=Math.max(0,100-placement);
+
+  let meta=250;
+
+  let partidas=Math.ceil(meta/points);
+
+  document.getElementById("hud").innerHTML=
+    `Pontos: ${points}<br>
+     Precisa de: ${meta}<br>
+     Partidas: ${partidas}`;
+}
+
+img.onload=draw;
 </script>
 
 </body>
