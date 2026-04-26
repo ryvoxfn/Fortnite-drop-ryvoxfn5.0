@@ -2,80 +2,43 @@
 <html lang="pt-br">
 <head>
 <meta charset="UTF-8">
-<title>FNCS Drop Calculator PRO</title>
+<title>FNCS DROP PRO</title>
 
 <style>
-body{
-    margin:0;
-    background:#0b0f1a;
-    font-family:Arial, Helvetica, sans-serif;
-    color:white;
-    text-align:center;
+body {
+    margin: 0;
+    font-family: Arial, sans-serif;
+    background: #0b0f1a;
+    color: white;
+    text-align: center;
 }
 
-h1{
-    margin:15px;
+h1 {
+    margin-top: 20px;
 }
 
-#controls{
-    margin:10px;
+.controls {
+    margin: 20px;
 }
 
-button{
-    background:#00ff88;
-    border:none;
-    padding:10px 15px;
-    margin:5px;
-    border-radius:8px;
-    cursor:pointer;
-    font-weight:bold;
+button {
+    background: #00ff88;
+    border: none;
+    padding: 10px 15px;
+    margin: 5px;
+    border-radius: 8px;
+    font-weight: bold;
+    cursor: pointer;
 }
 
-#mapa{
-    position:relative;
-    display:inline-block;
+button:hover {
+    background: #00cc6a;
 }
 
-#mapa img{
-    width:900px;
-    border-radius:10px;
-}
-
-.point{
-    position:absolute;
-    width:12px;
-    height:12px;
-    border-radius:50%;
-    transform:translate(-50%,-50%);
-}
-
-.bus{ background:#00aaff; }
-.drop{ background:red; }
-
-.line{
-    position:absolute;
-    height:3px;
-    background:yellow;
-    transform-origin:left;
-}
-
-.curve{
-    position:absolute;
-    border:2px dashed yellow;
-    border-radius:50%;
-}
-
-.pin{
-    position:absolute;
-    transform:translate(-50%,-100%);
-    font-size:22px;
-}
-
-.time{
-    position:absolute;
-    font-size:14px;
-    color:#00ffcc;
-    font-weight:bold;
+canvas {
+    border-radius: 15px;
+    margin-bottom: 20px;
+    max-width: 95%;
 }
 </style>
 </head>
@@ -84,137 +47,139 @@ button{
 
 <h1>🎯 FNCS DROP PRO</h1>
 
-<div id="controls">
-    <button onclick="setMode('busStart')">Início ônibus</button>
-    <button onclick="setMode('busEnd')">Fim ônibus</button>
-    <button onclick="setMode('drop')">Drop</button>
-    <button onclick="resetAll()">Reset</button>
+<div class="controls">
+    <button onclick="modo='start'">Início ônibus</button>
+    <button onclick="modo='end'">Fim ônibus</button>
+    <button onclick="modo='drop'">Drop</button>
+    <button onclick="reset()">Reset</button>
 </div>
 
-<div id="mapa">
-    <img src="mapa.jpg" id="mapImg">
-</div>
+<canvas id="mapa" width="900" height="900"></canvas>
 
 <script>
-let mode = "";
+const canvas = document.getElementById("mapa");
+const ctx = canvas.getContext("2d");
+
+const mapa = new Image();
+mapa.src = "mapa.jpg"; // coloque sua imagem aqui
+
+let modo = "start";
+
 let busStart = null;
 let busEnd = null;
-let drops = [];
+let drop = null;
 
-function setMode(m){
-    mode = m;
-}
+// clique no mapa
+canvas.addEventListener("click", (e) => {
+    const rect = canvas.getBoundingClientRect();
+    const x = (e.clientX - rect.left) * (canvas.width / rect.width);
+    const y = (e.clientY - rect.top) * (canvas.height / rect.height);
 
-function resetAll(){
-    busStart = null;
-    busEnd = null;
-    drops = [];
-    document.querySelectorAll(".point,.line,.curve,.pin,.time").forEach(e=>e.remove());
-}
+    if (modo === "start") busStart = { x, y };
+    if (modo === "end") busEnd = { x, y };
+    if (modo === "drop") drop = { x, y };
 
-document.getElementById("mapImg").addEventListener("click", function(e){
-    const rect = this.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const y = e.clientY - rect.top;
-
-    if(mode === "busStart"){
-        busStart = {x,y};
-        drawPoint(x,y,"bus");
-    }
-    else if(mode === "busEnd"){
-        busEnd = {x,y};
-        drawPoint(x,y,"bus");
-    }
-    else if(mode === "drop"){
-        const drop = {x,y};
-        drops.push(drop);
-        drawPoint(x,y,"drop");
-
-        if(busStart && busEnd){
-            calcularRota(drop);
-        }
-    }
+    desenhar();
 });
 
-function drawPoint(x,y,type){
-    const p = document.createElement("div");
-    p.className = "point " + type;
-    p.style.left = x+"px";
-    p.style.top = y+"px";
-    document.getElementById("mapa").appendChild(p);
+// reset
+function reset() {
+    busStart = null;
+    busEnd = null;
+    drop = null;
+    desenhar();
 }
 
-function calcularRota(drop){
+// cálculo PRO (ponto de afundar + tempo)
+function calcularDropPro(busStart, busEnd, drop) {
+    const dx = busEnd.x - busStart.x;
+    const dy = busEnd.y - busStart.y;
 
-    // projeção na linha do ônibus
-    const t = (
-        (drop.x - busStart.x)*(busEnd.x - busStart.x) +
-        (drop.y - busStart.y)*(busEnd.y - busStart.y)
-    ) /
-    (
-        (busEnd.x - busStart.x)**2 +
-        (busEnd.y - busStart.y)**2
+    const length = Math.sqrt(dx * dx + dy * dy);
+
+    const nx = dx / length;
+    const ny = dy / length;
+
+    const DISTANCIA_IDEAL = 280;
+
+    const afundarX = drop.x - nx * DISTANCIA_IDEAL;
+    const afundarY = drop.y - ny * DISTANCIA_IDEAL;
+
+    const distancia = Math.sqrt(
+        (drop.x - afundarX) ** 2 +
+        (drop.y - afundarY) ** 2
     );
 
-    const px = busStart.x + t*(busEnd.x - busStart.x);
-    const py = busStart.y + t*(busEnd.y - busStart.y);
+    const tempo = (distancia / 120).toFixed(1);
 
-    // ponto de pulo (ajuste realista)
-    const jumpX = px - (busEnd.x - busStart.x)*0.15;
-    const jumpY = py - (busEnd.y - busStart.y)*0.15;
-
-    drawCurve(jumpX, jumpY, drop.x, drop.y);
-
-    calcularTempo(jumpX, jumpY, drop.x, drop.y);
+    return {
+        afundar: { x: afundarX, y: afundarY },
+        tempo: tempo
+    };
 }
 
-function drawCurve(x1,y1,x2,y2){
+// desenhar tudo
+function desenhar() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.drawImage(mapa, 0, 0, canvas.width, canvas.height);
 
-    const cx = (x1 + x2)/2;
-    const cy = (y1 + y2)/2 - 80;
+    if (busStart && busEnd) {
+        ctx.strokeStyle = "#00ffff";
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(busStart.x, busStart.y);
+        ctx.lineTo(busEnd.x, busEnd.y);
+        ctx.stroke();
+    }
 
-    const path = document.createElement("div");
-    path.className = "curve";
-    path.style.left = (cx-100)+"px";
-    path.style.top = (cy-100)+"px";
-    path.style.width = "200px";
-    path.style.height = "200px";
+    if (busStart && busEnd && drop) {
+        const calc = calcularDropPro(busStart, busEnd, drop);
 
-    document.getElementById("mapa").appendChild(path);
+        const afundar = calc.afundar;
+
+        // linha amarela (principal)
+        ctx.strokeStyle = "yellow";
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.moveTo(afundar.x, afundar.y);
+        ctx.lineTo(drop.x, drop.y);
+        ctx.stroke();
+
+        // ponto afundar
+        ctx.fillStyle = "yellow";
+        ctx.beginPath();
+        ctx.arc(afundar.x, afundar.y, 8, 0, Math.PI * 2);
+        ctx.fill();
+
+        // drop final
+        ctx.fillStyle = "red";
+        ctx.beginPath();
+        ctx.arc(drop.x, drop.y, 8, 0, Math.PI * 2);
+        ctx.fill();
+
+        // tempo
+        ctx.fillStyle = "white";
+        ctx.font = "bold 14px Arial";
+        ctx.fillText(calc.tempo + "s", afundar.x + 10, afundar.y - 10);
+    }
+
+    // pontos do ônibus
+    if (busStart) {
+        ctx.fillStyle = "#00ffff";
+        ctx.beginPath();
+        ctx.arc(busStart.x, busStart.y, 6, 0, Math.PI * 2);
+        ctx.fill();
+    }
+
+    if (busEnd) {
+        ctx.fillStyle = "#00ffff";
+        ctx.beginPath();
+        ctx.arc(busEnd.x, busEnd.y, 6, 0, Math.PI * 2);
+        ctx.fill();
+    }
 }
 
-function calcularTempo(x1,y1,x2,y2){
-
-    const dist = Math.sqrt((x2-x1)**2 + (y2-y1)**2);
-
-    const velocidadeQueda = 320;
-    const velocidadeGlider = 130;
-
-    const tempoQueda = dist / velocidadeQueda;
-    const tempoGlider = dist / velocidadeGlider;
-
-    const tempoAbrir = tempoQueda * 0.65;
-
-    mostrarPin(x1,y1,tempoAbrir);
-}
-
-function mostrarPin(x,y,tempo){
-
-    const pin = document.createElement("div");
-    pin.className = "pin";
-    pin.innerHTML = "🪂";
-    pin.style.left = x+"px";
-    pin.style.top = y+"px";
-
-    const txt = document.createElement("div");
-    txt.className = "time";
-    txt.innerText = tempo.toFixed(1)+"s";
-    txt.style.left = x+"px";
-    txt.style.top = (y-25)+"px";
-
-    document.getElementById("mapa").appendChild(pin);
-    document.getElementById("mapa").appendChild(txt);
-}
+mapa.onload = desenhar;
 </script>
 
 </body>
