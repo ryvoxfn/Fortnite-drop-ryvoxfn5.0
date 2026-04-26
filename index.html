@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="pt-BR">
+<html lang="pt-br">
 <head>
 <meta charset="UTF-8">
 <title>Fortnite Drop PRO</title>
@@ -7,168 +7,230 @@
 <style>
 body{
   margin:0;
-  background:#061826;
+  background:#0b1d2a;
   font-family:Arial;
+  color:white;
 }
 
-/* BOTÕES */
-.controls{
-  position:absolute;
-  top:20px;
-  left:20px;
+.topbar{
+  position:fixed;
+  top:10px;
+  left:10px;
   z-index:10;
 }
 
 button{
-  background:#22c55e;
+  background:#2ecc71;
   border:none;
-  padding:10px;
+  padding:10px 15px;
   margin-right:5px;
   border-radius:8px;
   color:white;
+  font-weight:bold;
   cursor:pointer;
 }
 
-/* MAPA */
-.map-container{
-  position:relative;
-  width:900px;
-  margin:60px auto;
+button:hover{
+  background:#27ae60;
 }
 
-#map{
-  width:100%;
+canvas{
   display:block;
-}
-
-#canvas{
-  position:absolute;
-  top:0;
-  left:0;
-  width:100%;
-  height:100%;
-  cursor:crosshair;
+  margin:80px auto;
+  border-radius:12px;
+  box-shadow:0 0 20px rgba(0,0,0,0.5);
 }
 </style>
 </head>
 
 <body>
 
-<div class="controls">
-  <button onclick="setStart()">Início ônibus</button>
-  <button onclick="setEnd()">Fim ônibus</button>
-  <button onclick="setDrop()">Drop</button>
-  <button onclick="resetAll()">Reset</button>
+<div class="topbar">
+  <button onclick="modo='start'">Início ônibus</button>
+  <button onclick="modo='end'">Fim ônibus</button>
+  <button onclick="modo='drop'">Drop</button>
+  <button onclick="resetar()">Reset</button>
 </div>
 
-<div class="map-container">
-  <img id="map" src="mapa.jpg">
-  <canvas id="canvas"></canvas>
-</div>
+<canvas id="mapa" width="900" height="900"></canvas>
 
 <script>
-const canvas = document.getElementById("canvas");
+// ================= SETUP =================
+const canvas = document.getElementById("mapa");
 const ctx = canvas.getContext("2d");
-const map = document.getElementById("map");
 
-let start=null;
-let end=null;
-let drop=null;
-let clickMode="";
+const mapa = new Image();
+mapa.src = "mapa.jpg"; // IMPORTANTE: nome correto do arquivo
 
-// 🔥 GARANTE TAMANHO CORRETO
-map.onload = () => {
-  canvas.width = map.clientWidth;
-  canvas.height = map.clientHeight;
+let modo = null;
+
+let start = null;
+let end = null;
+let drops = [];
+
+let rotas = [];
+
+// ================= CLICK =================
+canvas.onclick = (e)=>{
+  const rect = canvas.getBoundingClientRect();
+  const x = e.clientX - rect.left;
+  const y = e.clientY - rect.top;
+
+  if(modo === "start") start = {x,y};
+  if(modo === "end") end = {x,y};
+  if(modo === "drop") drops.push({x,y});
+
+  atualizarIA();
 };
 
-// CLIQUE CORRETO
-canvas.addEventListener("click", (e)=>{
-  const rect = canvas.getBoundingClientRect();
-
-  const scaleX = canvas.width / rect.width;
-  const scaleY = canvas.height / rect.height;
-
-  const x = (e.clientX - rect.left) * scaleX;
-  const y = (e.clientY - rect.top) * scaleY;
-
-  if(clickMode==="start") start={x,y};
-  if(clickMode==="end") end={x,y};
-  if(clickMode==="drop") drop={x,y};
-
-  draw();
-});
-
-// BOTÕES
-function setStart(){clickMode="start";}
-function setEnd(){clickMode="end";}
-function setDrop(){clickMode="drop";}
-
-function resetAll(){
-  start=end=drop=null;
-  draw();
+// ================= RESET =================
+function resetar(){
+  start = null;
+  end = null;
+  drops = [];
+  rotas = [];
 }
 
-// DESENHO
-function draw(){
-  ctx.clearRect(0,0,canvas.width,canvas.height);
-
-  if(start) drawPoint(start,"blue");
-  if(end) drawPoint(end,"purple");
-  if(drop) drawPoint(drop,"red");
-
-  // linha ônibus
-  if(start && end){
-    ctx.strokeStyle="white";
-    ctx.lineWidth=2;
-
-    ctx.beginPath();
-    ctx.moveTo(start.x,start.y);
-    ctx.lineTo(end.x,end.y);
-    ctx.stroke();
-  }
-
-  // IA ponto perfeito
-  if(start && end && drop){
-
-    const t = calcBest();
-
-    const px = start.x + (end.x-start.x)*t;
-    const py = start.y + (end.y-start.y)*t;
-
-    drawPoint({x:px,y:py},"yellow");
-
-    ctx.setLineDash([6,6]);
-    ctx.strokeStyle="red";
-
-    ctx.beginPath();
-    ctx.moveTo(px,py);
-    ctx.lineTo(drop.x,drop.y);
-    ctx.stroke();
-
-    ctx.setLineDash([]);
-  }
-}
-
-// desenhar ponto
-function drawPoint(p,color){
-  ctx.fillStyle=color;
+// ================= DRAW =================
+function drawPoint(p, cor){
+  if(!p) return;
+  ctx.fillStyle = cor;
   ctx.beginPath();
   ctx.arc(p.x,p.y,6,0,Math.PI*2);
   ctx.fill();
 }
 
-// IA simples
-function calcBest(){
-  const dx = drop.x - start.x;
-  const dy = drop.y - start.y;
-  const dist = Math.sqrt(dx*dx + dy*dy);
-
-  if(dist > 600) return 0.7;
-  if(dist > 400) return 0.6;
-  if(dist > 250) return 0.5;
-  return 0.4;
+function drawLinha(p1,p2,cor){
+  if(!p1 || !p2) return;
+  ctx.strokeStyle = cor;
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(p1.x,p1.y);
+  ctx.lineTo(p2.x,p2.y);
+  ctx.stroke();
 }
+
+// ================= SETA =================
+function seta(p1,p2,cor){
+  const ang = Math.atan2(p2.y-p1.y,p2.x-p1.x);
+  const size = 10;
+
+  ctx.fillStyle = cor;
+  ctx.beginPath();
+  ctx.moveTo(p2.x,p2.y);
+  ctx.lineTo(p2.x - size*Math.cos(ang - Math.PI/6), p2.y - size*Math.sin(ang - Math.PI/6));
+  ctx.lineTo(p2.x - size*Math.cos(ang + Math.PI/6), p2.y - size*Math.sin(ang + Math.PI/6));
+  ctx.closePath();
+  ctx.fill();
+}
+
+// ================= TEMPO =================
+function calcularTempo(start, drop){
+
+  const dist = Math.hypot(drop.x - start.x, drop.y - start.y);
+
+  // ajuste fino aqui ↓
+  const speedFall = 6.5;
+  const speedGlide = 2.2;
+
+  const fallPart = dist * 0.4;
+  const glidePart = dist * 0.6;
+
+  return (fallPart / speedFall) + (glidePart / speedGlide);
+}
+
+// ================= ROTA =================
+function gerarRota(drop){
+
+  const pontos = [];
+
+  pontos.push(start);
+
+  for(let i=1;i<=3;i++){
+    pontos.push({
+      x: start.x + (drop.x - start.x)*(i/4),
+      y: start.y + (drop.y - start.y)*(i/4)
+    });
+  }
+
+  pontos.push(drop);
+
+  return pontos;
+}
+
+// ================= IA =================
+function atualizarIA(){
+
+  rotas = [];
+
+  if(!start || drops.length === 0) return;
+
+  drops.forEach((drop, index)=>{
+
+    const tempo = calcularTempo(start, drop);
+
+    rotas.push({
+      pontos: gerarRota(drop),
+      cor: index % 2 === 0 ? "cyan" : "yellow",
+      tempo: tempo,
+      drop: drop
+    });
+
+  });
+
+  // melhor rota primeiro
+  rotas.sort((a,b)=> a.tempo - b.tempo);
+}
+
+// ================= DESENHAR ROTAS =================
+function drawRotas(){
+
+  rotas.forEach((r,i)=>{
+
+    ctx.strokeStyle = r.cor;
+    ctx.lineWidth = i === 0 ? 4 : 2;
+
+    ctx.beginPath();
+
+    r.pontos.forEach((p,j)=>{
+      if(j===0) ctx.moveTo(p.x,p.y);
+      else ctx.lineTo(p.x,p.y);
+    });
+
+    ctx.stroke();
+
+    // setas
+    for(let k=0;k<r.pontos.length-1;k++){
+      seta(r.pontos[k], r.pontos[k+1], r.cor);
+    }
+
+    // tempo
+    ctx.fillStyle = "white";
+    ctx.font = "12px Arial";
+    ctx.fillText(r.tempo.toFixed(1)+"s", r.drop.x+5, r.drop.y-5);
+
+  });
+}
+
+// ================= LOOP =================
+function loop(){
+
+  ctx.clearRect(0,0,900,900);
+  ctx.drawImage(mapa,0,0,900,900);
+
+  drawLinha(start,end,"white");
+
+  drawRotas();
+
+  drawPoint(start,"blue");
+  drawPoint(end,"purple");
+
+  drops.forEach(d=> drawPoint(d,"red"));
+
+  requestAnimationFrame(loop);
+}
+
+mapa.onload = loop;
 </script>
 
 </body>
