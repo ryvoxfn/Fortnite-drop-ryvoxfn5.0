@@ -8,7 +8,6 @@
 body {
   margin: 0;
   background: #0b1a2a;
-  color: white;
   font-family: Arial;
 }
 
@@ -21,7 +20,7 @@ body {
 button {
   margin: 3px;
   padding: 8px;
-  background: #00c853;
+  background: #22c55e;
   border: none;
   color: white;
   border-radius: 6px;
@@ -32,13 +31,10 @@ button {
   position: absolute;
   right: 10px;
   top: 10px;
-  background: black;
+  background: rgba(0,0,0,0.8);
   padding: 10px;
   border-radius: 8px;
-}
-
-canvas {
-  cursor: grab;
+  color: white;
 }
 </style>
 </head>
@@ -46,13 +42,13 @@ canvas {
 <body>
 
 <div id="ui">
-  <button onclick="setMode('start')">Início ônibus</button>
-  <button onclick="setMode('end')">Fim ônibus</button>
-  <button onclick="setMode('drop')">Drop</button>
+  <button onclick="mode='start'">Início ônibus</button>
+  <button onclick="mode='end'">Fim ônibus</button>
+  <button onclick="mode='drop'">Drop</button>
   <button onclick="resetAll()">Reset</button>
 </div>
 
-<div id="hud">HUD</div>
+<div id="hud">Carregando mapa...</div>
 
 <canvas id="map" width="900" height="600"></canvas>
 
@@ -61,98 +57,57 @@ const canvas = document.getElementById("map");
 const ctx = canvas.getContext("2d");
 
 let mapImg = new Image();
-mapImg.src = "mapa.jpg"; // 🔥 CONFERE ISSO
+
+// 🔥 LINK ABSOLUTO (CORRIGIDO)
+mapImg.src = "https://ryvoxfn.github.io/Fortnite-drop-ryvoxfn5.0/mapa.jpg";
 
 let mode = "start";
-
 let busStart = null;
 let busEnd = null;
 let drop = null;
 
-let offsetX = 0;
-let offsetY = 0;
-let scale = 1;
-let dragging = false;
-let lastX, lastY;
+// zoom / drag
+let offsetX = 0, offsetY = 0, scale = 1;
+let dragging = false, lastX, lastY;
 
-// 🔥 ZOOM
-canvas.addEventListener("wheel", e => {
-  e.preventDefault();
-  scale += e.deltaY * -0.001;
-  scale = Math.max(0.5, Math.min(3, scale));
-});
-
-// 🔥 DRAG
-canvas.addEventListener("mousedown", e => {
-  dragging = true;
-  lastX = e.offsetX;
-  lastY = e.offsetY;
-});
-
-canvas.addEventListener("mouseup", () => dragging = false);
-
-canvas.addEventListener("mousemove", e => {
-  if (dragging) {
-    offsetX += e.offsetX - lastX;
-    offsetY += e.offsetY - lastY;
-    lastX = e.offsetX;
-    lastY = e.offsetY;
-  }
-});
-
-// 🔥 CLICK
-canvas.addEventListener("click", e => {
-  const x = (e.offsetX - offsetX) / scale;
-  const y = (e.offsetY - offsetY) / scale;
-
-  if (mode === "start") busStart = { x, y };
-  if (mode === "end") busEnd = { x, y };
-  if (mode === "drop") drop = { x, y };
-});
-
-function setMode(m){ mode = m; }
-function resetAll(){
-  busStart = busEnd = drop = null;
-}
-
-// 🧠 FUNÇÕES
+// 🧠 FUNÇÕES BASE
 function distance(a,b){
   return Math.hypot(a.x-b.x, a.y-b.y);
 }
 
 function normalize(v){
   const len = Math.hypot(v.x,v.y);
-  return { x: v.x/len, y: v.y/len };
+  return { x:v.x/len, y:v.y/len };
 }
 
 // 🧠 IA SIMULAÇÃO
-function simulateDrop(jumpPoint, dropPoint) {
+function simulateDrop(jump, target){
   const diveTime = 14;
   const glideTime = 20;
 
   const diveSpeed = 120;
   const glideSpeed = 60;
 
-  let pos = { ...jumpPoint };
-  let dir = normalize({
-    x: dropPoint.x - pos.x,
-    y: dropPoint.y - pos.y
-  });
-
+  let pos = { ...jump };
   let time = 0;
 
-  for (let t=0; t<diveTime; t+=0.1){
+  let dir = normalize({
+    x: target.x - pos.x,
+    y: target.y - pos.y
+  });
+
+  for (let t=0;t<diveTime;t+=0.1){
     pos.x += dir.x * diveSpeed * 0.1;
     pos.y += dir.y * diveSpeed * 0.1;
     time += 0.1;
   }
 
   dir = normalize({
-    x: dropPoint.x - pos.x,
-    y: dropPoint.y - pos.y
+    x: target.x - pos.x,
+    y: target.y - pos.y
   });
 
-  for (let t=0; t<glideTime; t+=0.1){
+  for (let t=0;t<glideTime;t+=0.1){
     pos.x += dir.x * glideSpeed * 0.1;
     pos.y += dir.y * glideSpeed * 0.1;
     time += 0.1;
@@ -160,30 +115,28 @@ function simulateDrop(jumpPoint, dropPoint) {
 
   return {
     time,
-    dist: distance(pos, dropPoint),
-    final: pos
+    dist: distance(pos,target)
   };
 }
 
 // 🧠 IA MELHOR PULO
 function findBestJump(){
-  if (!busStart || !busEnd || !drop) return null;
+  if(!busStart || !busEnd || !drop) return null;
 
   let best = null;
 
-  for (let t=0; t<=30; t+=0.3){
-    const p = t/30;
+  for(let t=0;t<=30;t+=0.3){
+    let p = t/30;
 
-    const busPos = {
+    let busPos = {
       x: busStart.x + (busEnd.x - busStart.x)*p,
       y: busStart.y + (busEnd.y - busStart.y)*p
     };
 
-    const sim = simulateDrop(busPos, drop);
+    let sim = simulateDrop(busPos, drop);
+    let score = sim.dist + sim.time*2;
 
-    const score = sim.dist + sim.time*2;
-
-    if (!best || score < best.score){
+    if(!best || score < best.score){
       best = { jump: busPos, sim, score };
     }
   }
@@ -191,7 +144,44 @@ function findBestJump(){
   return best;
 }
 
-// 🎯 DESENHO
+// 🎯 CONTROLES
+canvas.addEventListener("click", e=>{
+  const x = (e.offsetX - offsetX) / scale;
+  const y = (e.offsetY - offsetY) / scale;
+
+  if(mode==="start") busStart={x,y};
+  if(mode==="end") busEnd={x,y};
+  if(mode==="drop") drop={x,y};
+});
+
+canvas.addEventListener("wheel", e=>{
+  e.preventDefault();
+  scale += e.deltaY * -0.001;
+  scale = Math.max(0.5, Math.min(3, scale));
+});
+
+canvas.addEventListener("mousedown", e=>{
+  dragging=true;
+  lastX=e.offsetX;
+  lastY=e.offsetY;
+});
+
+canvas.addEventListener("mouseup", ()=>dragging=false);
+
+canvas.addEventListener("mousemove", e=>{
+  if(dragging){
+    offsetX += e.offsetX-lastX;
+    offsetY += e.offsetY-lastY;
+    lastX=e.offsetX;
+    lastY=e.offsetY;
+  }
+});
+
+function resetAll(){
+  busStart = busEnd = drop = null;
+}
+
+// 🎨 DESENHO
 function draw(){
   ctx.clearRect(0,0,canvas.width,canvas.height);
 
@@ -199,38 +189,27 @@ function draw(){
   ctx.translate(offsetX, offsetY);
   ctx.scale(scale, scale);
 
+  // MAPA
   ctx.drawImage(mapImg, 0, 0, 900, 600);
 
-  if (busStart){
-    ctx.fillStyle="blue";
+  function drawPoint(p,color){
+    if(!p) return;
+    ctx.fillStyle=color;
     ctx.beginPath();
-    ctx.arc(busStart.x,busStart.y,6,0,Math.PI*2);
+    ctx.arc(p.x,p.y,6,0,Math.PI*2);
     ctx.fill();
   }
 
-  if (busEnd){
-    ctx.fillStyle="red";
-    ctx.beginPath();
-    ctx.arc(busEnd.x,busEnd.y,6,0,Math.PI*2);
-    ctx.fill();
-  }
+  drawPoint(busStart,"blue");
+  drawPoint(busEnd,"red");
+  drawPoint(drop,"purple");
 
-  if (drop){
-    ctx.fillStyle="purple";
-    ctx.beginPath();
-    ctx.arc(drop.x,drop.y,6,0,Math.PI*2);
-    ctx.fill();
-  }
+  const best = findBestJump();
 
-  const result = findBestJump();
+  if(best){
+    const j = best.jump;
 
-  if (result){
-    const j = result.jump;
-
-    ctx.fillStyle="orange";
-    ctx.beginPath();
-    ctx.arc(j.x,j.y,8,0,Math.PI*2);
-    ctx.fill();
+    drawPoint(j,"orange");
 
     ctx.strokeStyle="yellow";
     ctx.beginPath();
@@ -238,7 +217,11 @@ function draw(){
     ctx.lineTo(drop.x,drop.y);
     ctx.stroke();
 
-    updateHUD(result.sim);
+    // HUD
+    document.getElementById("hud").innerHTML =
+      "Tempo: "+best.sim.time.toFixed(1)+"s<br>"+
+      "Erro: "+best.sim.dist.toFixed(0)+"px<br>"+
+      (best.sim.dist<50?"🔥 PERFECT":"⚠️ Ajustar");
   }
 
   ctx.restore();
@@ -246,15 +229,15 @@ function draw(){
   requestAnimationFrame(draw);
 }
 
-// 🧠 HUD
-function updateHUD(sim){
-  document.getElementById("hud").innerHTML =
-    "Tempo: " + sim.time.toFixed(1) + "s<br>" +
-    "Erro: " + sim.dist.toFixed(0) + "px<br>" +
-    (sim.dist < 50 ? "🔥 PERFECT DROP" : "⚠️ Ajustar");
-}
+// 🔥 GARANTE QUE O MAPA CARREGOU
+mapImg.onload = () => {
+  document.getElementById("hud").innerText = "Mapa carregado ✔";
+  draw();
+};
 
-mapImg.onload = draw;
+mapImg.onerror = () => {
+  document.getElementById("hud").innerText = "ERRO ao carregar mapa ❌";
+};
 </script>
 
 </body>
