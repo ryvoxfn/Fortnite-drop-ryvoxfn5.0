@@ -2,302 +2,172 @@
 <html lang="pt-BR">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>FNCS Drop PRO</title>
+<title>Fortnite Drop PRO</title>
 
 <style>
-body {
-    margin: 0;
-    font-family: Arial;
-    background: #0b1220;
-    color: white;
-}
-
-/* HUD */
-#hud {
-    position: absolute;
-    top: 10px;
-    left: 10px;
-    right: 10px;
-    display: flex;
-    justify-content: space-between;
-    padding: 10px 20px;
-    background: rgba(0,0,0,0.5);
-    border-radius: 10px;
-    z-index: 2;
-}
-
-/* CANVAS */
-canvas {
-    display: block;
+body{
+  margin:0;
+  background:#061826;
+  font-family:Arial;
 }
 
 /* BOTÕES */
-#controls {
-    position: absolute;
-    top: 70px;
-    left: 20px;
-    z-index: 2;
+.controls{
+  position:absolute;
+  top:20px;
+  left:20px;
+  z-index:10;
 }
 
-#controls button {
-    margin: 5px;
-    padding: 10px;
-    border-radius: 8px;
-    border: none;
-    background: #22c55e;
-    color: white;
-    cursor: pointer;
+button{
+  background:#22c55e;
+  border:none;
+  padding:10px;
+  margin-right:5px;
+  border-radius:8px;
+  color:white;
+  cursor:pointer;
 }
 
-/* PAINEL */
-#painel {
-    position: absolute;
-    bottom: 20px;
-    left: 20px;
-    width: 260px;
-    padding: 15px;
-    background: rgba(0,0,0,0.7);
-    border-radius: 12px;
-    z-index: 2;
+/* MAPA */
+.map-container{
+  position:relative;
+  width:900px;
+  margin:60px auto;
 }
 
-#painel input {
-    width: 100%;
-    margin: 5px 0;
-    padding: 8px;
-    border-radius: 6px;
-    border: none;
+#map{
+  width:100%;
+  display:block;
 }
 
-/* TOGGLE */
-.toggle {
-    width: 100%;
-    height: 40px;
-    border-radius: 50px;
-    background: red;
-    display: flex;
-    align-items: center;
-    padding: 5px;
-    position: relative;
-    cursor: pointer;
-}
-
-.toggle .circle {
-    width: 30px;
-    height: 30px;
-    background: white;
-    border-radius: 50%;
-    transition: 0.3s;
-}
-
-.toggle span {
-    position: absolute;
-    right: 15px;
-}
-
-.toggle.on {
-    background: #22c55e;
-}
-
-.toggle.on .circle {
-    transform: translateX(120px);
-}
-.toggle.on span {
-    left: 15px;
-    right: auto;
-}
-
-/* PROGRESS */
-.progress {
-    width: 100%;
-    height: 10px;
-    background: #1f2937;
-    border-radius: 10px;
-    margin-top: 10px;
-}
-
-#bar {
-    height: 100%;
-    width: 0%;
-    background: #22c55e;
-    border-radius: 10px;
+#canvas{
+  position:absolute;
+  top:0;
+  left:0;
+  width:100%;
+  height:100%;
+  cursor:crosshair;
 }
 </style>
 </head>
 
 <body>
 
-<!-- HUD -->
-<div id="hud">
-    <div>🔥 FNCS PRO</div>
-    <div id="info">Precisão: -</div>
+<div class="controls">
+  <button onclick="setStart()">Início ônibus</button>
+  <button onclick="setEnd()">Fim ônibus</button>
+  <button onclick="setDrop()">Drop</button>
+  <button onclick="resetAll()">Reset</button>
 </div>
 
-<!-- BOTÕES -->
-<div id="controls">
-    <button onclick="setInicio()">Início ônibus</button>
-    <button onclick="setFim()">Fim ônibus</button>
-    <button onclick="setDrop()">Drop</button>
-    <button onclick="reset()">Reset</button>
+<div class="map-container">
+  <img id="map" src="mapa.jpg">
+  <canvas id="canvas"></canvas>
 </div>
-
-<!-- PAINEL -->
-<div id="painel">
-    <input id="kills" placeholder="Kills">
-    <input id="placement" placeholder="Placement">
-
-    <div class="toggle" id="toggle" onclick="toggleKill()">
-        <div class="circle"></div>
-        <span id="label">OFF</span>
-    </div>
-
-    <button onclick="calcular()">Calcular</button>
-
-    <div id="resultado"></div>
-
-    <div class="progress">
-        <div id="bar"></div>
-    </div>
-
-    <div id="previsao"></div>
-</div>
-
-<!-- MAPA -->
-<canvas id="canvas"></canvas>
 
 <script>
-// ==========================
-// CONFIG CANVAS
-// ==========================
 const canvas = document.getElementById("canvas");
 const ctx = canvas.getContext("2d");
+const map = document.getElementById("map");
 
-canvas.width = window.innerWidth;
-canvas.height = window.innerHeight;
+let start=null;
+let end=null;
+let drop=null;
+let clickMode="";
 
-// ==========================
-// IMAGEM DO MAPA
-// ==========================
-let img = new Image();
-img.src = "mapa.jpg"; // PRECISA estar na mesma pasta
-
-img.onload = () => draw();
-
-// ==========================
-// VARIÁVEIS
-// ==========================
-let inicio = null;
-let fim = null;
-let drop = null;
-let modo = "";
-
-// ==========================
-// CLICK NO MAPA
-// ==========================
-canvas.onclick = (e) => {
-    let rect = canvas.getBoundingClientRect();
-    let x = e.clientX - rect.left;
-    let y = e.clientY - rect.top;
-
-    if (modo === "inicio") inicio = {x,y};
-    else if (modo === "fim") fim = {x,y};
-    else if (modo === "drop") drop = {x,y};
-
-    draw();
+// 🔥 GARANTE TAMANHO CORRETO
+map.onload = () => {
+  canvas.width = map.clientWidth;
+  canvas.height = map.clientHeight;
 };
 
-// ==========================
-// DESENHAR
-// ==========================
-function draw() {
-    ctx.clearRect(0,0,canvas.width,canvas.height);
-    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+// CLIQUE CORRETO
+canvas.addEventListener("click", (e)=>{
+  const rect = canvas.getBoundingClientRect();
 
-    // Linha ônibus
-    if (inicio && fim) {
-        ctx.strokeStyle = "yellow";
-        ctx.lineWidth = 3;
-        ctx.beginPath();
-        ctx.moveTo(inicio.x, inicio.y);
-        ctx.lineTo(fim.x, fim.y);
-        ctx.stroke();
-    }
+  const scaleX = canvas.width / rect.width;
+  const scaleY = canvas.height / rect.height;
 
-    // Drop
-    if (drop) {
-        ctx.fillStyle = "red";
-        ctx.beginPath();
-        ctx.arc(drop.x, drop.y, 8, 0, Math.PI*2);
-        ctx.fill();
-    }
-}
+  const x = (e.clientX - rect.left) * scaleX;
+  const y = (e.clientY - rect.top) * scaleY;
 
-// ==========================
+  if(clickMode==="start") start={x,y};
+  if(clickMode==="end") end={x,y};
+  if(clickMode==="drop") drop={x,y};
+
+  draw();
+});
+
 // BOTÕES
-// ==========================
-function setInicio(){ modo = "inicio"; }
-function setFim(){ modo = "fim"; }
-function setDrop(){ modo = "drop"; }
+function setStart(){clickMode="start";}
+function setEnd(){clickMode="end";}
+function setDrop(){clickMode="drop";}
 
-function reset(){
-    inicio = fim = drop = null;
-    draw();
+function resetAll(){
+  start=end=drop=null;
+  draw();
 }
 
-// ==========================
-// TOGGLE
-// ==========================
-let killAtivado = false;
+// DESENHO
+function draw(){
+  ctx.clearRect(0,0,canvas.width,canvas.height);
 
-function toggleKill(){
-    let t = document.getElementById("toggle");
-    let label = document.getElementById("label");
+  if(start) drawPoint(start,"blue");
+  if(end) drawPoint(end,"purple");
+  if(drop) drawPoint(drop,"red");
 
-    killAtivado = !killAtivado;
+  // linha ônibus
+  if(start && end){
+    ctx.strokeStyle="white";
+    ctx.lineWidth=2;
 
-    if(killAtivado){
-        t.classList.add("on");
-        label.innerText = "ON";
-    } else {
-        t.classList.remove("on");
-        label.innerText = "OFF";
-    }
+    ctx.beginPath();
+    ctx.moveTo(start.x,start.y);
+    ctx.lineTo(end.x,end.y);
+    ctx.stroke();
+  }
+
+  // IA ponto perfeito
+  if(start && end && drop){
+
+    const t = calcBest();
+
+    const px = start.x + (end.x-start.x)*t;
+    const py = start.y + (end.y-start.y)*t;
+
+    drawPoint({x:px,y:py},"yellow");
+
+    ctx.setLineDash([6,6]);
+    ctx.strokeStyle="red";
+
+    ctx.beginPath();
+    ctx.moveTo(px,py);
+    ctx.lineTo(drop.x,drop.y);
+    ctx.stroke();
+
+    ctx.setLineDash([]);
+  }
 }
 
-// ==========================
-// FNCS
-// ==========================
-function placementPoints(p){
-    if(p==1) return 65;
-    if(p<=5) return 50;
-    if(p<=10) return 40;
-    if(p<=20) return 30;
-    if(p<=30) return 20;
-    return 0;
+// desenhar ponto
+function drawPoint(p,color){
+  ctx.fillStyle=color;
+  ctx.beginPath();
+  ctx.arc(p.x,p.y,6,0,Math.PI*2);
+  ctx.fill();
 }
 
-// ==========================
-// CALCULAR
-// ==========================
-function calcular(){
-    let k = parseInt(document.getElementById("kills").value)||0;
-    let p = parseInt(document.getElementById("placement").value)||100;
+// IA simples
+function calcBest(){
+  const dx = drop.x - start.x;
+  const dy = drop.y - start.y;
+  const dist = Math.sqrt(dx*dx + dy*dy);
 
-    let pts = placementPoints(p) + (killAtivado ? k*2 : 0);
-
-    document.getElementById("resultado").innerHTML =
-        "Pontos: " + pts;
-
-    let meta = 300;
-    let perc = (pts/meta)*100;
-
-    document.getElementById("bar").style.width = perc + "%";
-
-    let partidas = Math.ceil(meta/(pts||1));
-
-    document.getElementById("previsao").innerHTML =
-        "Partidas necessárias: " + partidas;
+  if(dist > 600) return 0.7;
+  if(dist > 400) return 0.6;
+  if(dist > 250) return 0.5;
+  return 0.4;
 }
 </script>
 
