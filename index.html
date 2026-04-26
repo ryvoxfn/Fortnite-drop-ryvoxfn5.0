@@ -2,7 +2,7 @@
 <html lang="pt-BR">
 <head>
 <meta charset="UTF-8">
-<title>Fortnite Drop PRO</title>
+<title>Fortnite Drop PRO IA</title>
 
 <style>
 body {
@@ -55,6 +55,7 @@ canvas:active {
     <button onclick="setPonto('busEnd')">Fim ônibus</button>
     <button onclick="setPonto('drop')">🟠 Salte aqui</button>
     <button onclick="setPonto('glider')">🟢 Abrir glider</button>
+    <button onclick="autoDrop()">🤖 Melhor Drop</button>
     <button onclick="resetar()">Reset</button>
 </div>
 
@@ -69,6 +70,7 @@ const ctx = canvas.getContext("2d");
 let img = new Image();
 img.src = "mapa.jpg";
 
+// zoom / movimento
 let escala = 1;
 let offsetX = 0;
 let offsetY = 0;
@@ -76,6 +78,7 @@ let offsetY = 0;
 let dragging = false;
 let lastX, lastY;
 
+// modo clique
 let modo = null;
 
 let pontos = {
@@ -86,7 +89,7 @@ let pontos = {
 };
 
 // ======================
-// 🔥 FÍSICA REALISTA
+// 🔥 FÍSICA
 // ======================
 
 const GRAVIDADE = 9.8;
@@ -105,11 +108,9 @@ function simularQueda() {
     while (altura > ALTURA_GLIDER) {
         velocidade += GRAVIDADE * dt;
         if (velocidade > VELOCIDADE_MAX) velocidade = VELOCIDADE_MAX;
-
         altura -= velocidade * dt;
         t += dt;
     }
-
     return t;
 }
 
@@ -122,7 +123,6 @@ function simularGlider() {
         altura -= VELOCIDADE_GLIDER * dt;
         tempo += dt;
     }
-
     return tempo;
 }
 
@@ -154,11 +154,10 @@ canvas.addEventListener("click", (e)=>{
 // zoom
 canvas.addEventListener("wheel", (e)=>{
     e.preventDefault();
-    const zoom = e.deltaY < 0 ? 1.1 : 0.9;
-    escala *= zoom;
+    escala *= e.deltaY < 0 ? 1.1 : 0.9;
 });
 
-// arrastar mapa
+// arrastar
 canvas.addEventListener("mousedown",(e)=>{
     dragging=true;
     lastX=e.clientX;
@@ -177,15 +176,91 @@ window.addEventListener("mousemove",(e)=>{
 });
 
 // ======================
-// 📏 DISTÂNCIA
+// 📏 DISTÂNCIAS
 // ======================
 
 function distancia(a,b){
     return Math.hypot(a.x-b.x,a.y-b.y);
 }
 
+function distanciaAteLinha(p, a, b){
+    const A = p.x - a.x;
+    const B = p.y - a.y;
+    const C = b.x - a.x;
+    const D = b.y - a.y;
+
+    const dot = A*C + B*D;
+    const len_sq = C*C + D*D;
+    let param = dot / len_sq;
+
+    let xx, yy;
+
+    if(param < 0){
+        xx = a.x;
+        yy = a.y;
+    } else if(param > 1){
+        xx = b.x;
+        yy = b.y;
+    } else {
+        xx = a.x + param * C;
+        yy = a.y + param * D;
+    }
+
+    return Math.hypot(p.x - xx, p.y - yy);
+}
+
 // ======================
-// 🧠 CÁLCULO PRINCIPAL
+// 🤖 IA MELHOR DROP
+// ======================
+
+function avaliarPonto(p){
+    const distLinha = distanciaAteLinha(p, pontos.busStart, pontos.busEnd);
+
+    const centro = {x: img.width/2, y: img.height/2};
+    const distCentro = distancia(p, centro);
+
+    let score = 0;
+
+    score += distLinha * 1.5;
+    score -= distCentro * 0.3;
+
+    return score;
+}
+
+function autoDrop(){
+    if(!pontos.busStart || !pontos.busEnd){
+        alert("Defina o ônibus primeiro!");
+        return;
+    }
+
+    let melhor = null;
+    let melhorScore = Infinity;
+
+    for(let x = 0; x < img.width; x += 40){
+        for(let y = 0; y < img.height; y += 40){
+
+            let p = {x,y};
+            let score = avaliarPonto(p);
+
+            if(score < melhorScore){
+                melhorScore = score;
+                melhor = p;
+            }
+        }
+    }
+
+    pontos.drop = melhor;
+
+    pontos.glider = {
+        x: melhor.x + 60,
+        y: melhor.y + 60
+    };
+
+    calcular();
+}
+
+// ======================
+// 🧠 CÁLCULO
 // ======================
 
 function calcular(){
@@ -195,11 +270,9 @@ function calcular(){
 
     const tempoQueda = simularQueda();
     const tempoGlider = simularGlider();
-
     const tempoTotal = tempoQueda + tempoGlider;
 
-    const velocidadeAtual = VELOCIDADE_MAX;
-    const decisao = melhorTiming(ALTURA_GLIDER, velocidadeAtual);
+    const decisao = melhorTiming(ALTURA_GLIDER, VELOCIDADE_MAX);
 
     document.getElementById("hud").innerHTML = `
         Tempo total: ${tempoTotal.toFixed(1)}s<br>
@@ -208,6 +281,27 @@ function calcular(){
         Distância: ${dist.toFixed(0)} px<br>
         Decisão: ${decisao}
     `;
+}
+
+// ======================
+// ➤ SETAS ÔNIBUS
+// ======================
+
+function drawArrow(x, y, angle){
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.rotate(angle);
+
+    ctx.fillStyle = "#ffffffcc";
+
+    ctx.beginPath();
+    ctx.moveTo(0, 0);
+    ctx.lineTo(-10, -6);
+    ctx.lineTo(-10, 6);
+    ctx.closePath();
+    ctx.fill();
+
+    ctx.restore();
 }
 
 // ======================
@@ -224,14 +318,29 @@ function draw(){
 
     ctx.drawImage(img,0,0);
 
-    // linha ônibus
+    // ônibus com setas
     if(pontos.busStart && pontos.busEnd){
-        ctx.strokeStyle="yellow";
-        ctx.lineWidth=2;
+
+        const x1 = pontos.busStart.x;
+        const y1 = pontos.busStart.y;
+        const x2 = pontos.busEnd.x;
+        const y2 = pontos.busEnd.y;
+
+        ctx.strokeStyle = "white";
+        ctx.lineWidth = 3;
         ctx.beginPath();
-        ctx.moveTo(pontos.busStart.x,pontos.busStart.y);
-        ctx.lineTo(pontos.busEnd.x,pontos.busEnd.y);
+        ctx.moveTo(x1, y1);
+        ctx.lineTo(x2, y2);
         ctx.stroke();
+
+        const angle = Math.atan2(y2 - y1, x2 - x1);
+        const dist = Math.hypot(x2 - x1, y2 - y1);
+
+        for(let i = 0; i < dist; i += 25){
+            const x = x1 + Math.cos(angle) * i;
+            const y = y1 + Math.sin(angle) * i;
+            drawArrow(x, y, angle);
+        }
     }
 
     // trajetória
@@ -270,7 +379,6 @@ function resetar(){
     document.getElementById("hud").innerHTML="HUD";
 }
 
-// start
 img.onload = draw;
 </script>
 
