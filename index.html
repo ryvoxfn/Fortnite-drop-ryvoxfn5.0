@@ -2,23 +2,23 @@
 <html lang="pt-br">
 <head>
 <meta charset="UTF-8">
-<title>Drop Perfeito</title>
+<title>🎯 Drop Perfeito</title>
 
 <style>
 body{
     margin:0;
     background:#0b0f1a;
     font-family:Arial;
-    color:white;
     text-align:center;
+    color:white;
 }
 
-.controls{
-    margin:10px;
+h1{
+    margin:20px;
 }
 
 button{
-    padding:10px;
+    padding:10px 20px;
     margin:5px;
     border:none;
     border-radius:8px;
@@ -30,133 +30,153 @@ button{
 canvas{
     margin-top:10px;
     border-radius:12px;
+    max-width:90%;
+    cursor:grab;
 }
 </style>
 </head>
 
 <body>
 
-<h2>🎯 Drop Perfeito</h2>
+<h1>🎯 Drop Perfeito</h1>
 
-<div class="controls">
-    <button onclick="modo='start'">Início ônibus</button>
-    <button onclick="modo='end'">Fim ônibus</button>
-    <button onclick="modo='drop'">Drop</button>
-    <button onclick="reset()">Reset</button>
-</div>
+<button onclick="modo='inicio'">Início ônibus</button>
+<button onclick="modo='fim'">Fim ônibus</button>
+<button onclick="modo='drop'">Drop</button>
+<button onclick="reset()">Reset</button>
 
-<canvas id="mapa" width="900" height="900"></canvas>
+<br>
+<canvas id="mapa" width="1000" height="1000"></canvas>
 
 <script>
 const canvas = document.getElementById("mapa");
 const ctx = canvas.getContext("2d");
 
 const mapa = new Image();
-mapa.src = "mapa.jpg";
+mapa.src = "https://media.fortniteapi.io/images/map.png?showPOI=true";
 
-let modo = "start";
-
-let start = null;
-let end = null;
+let modo = "";
+let inicio = null;
+let fim = null;
 let drop = null;
+let god = null;
 
-// clique
-canvas.onclick = (e)=>{
-    const rect = canvas.getBoundingClientRect();
-    const x = (e.clientX - rect.left)*(canvas.width/rect.width);
-    const y = (e.clientY - rect.top)*(canvas.height/rect.height);
+// ZOOM + DRAG
+let scale = 1;
+let offsetX = 0;
+let offsetY = 0;
+let dragging = false;
+let lastX, lastY;
 
-    if(modo==="start") start = {x,y};
-    if(modo==="end") end = {x,y};
-    if(modo==="drop") drop = {x,y};
-
-    desenhar();
+canvas.onmousedown = e=>{
+    dragging = true;
+    lastX = e.clientX;
+    lastY = e.clientY;
 };
 
-function reset(){
-    start = end = drop = null;
-    desenhar();
-}
+canvas.onmouseup = ()=> dragging = false;
 
-// cálculo simples (igual copilot)
-function calcularAfundar(){
-    if(!start || !end || !drop) return null;
+canvas.onmousemove = e=>{
+    if(dragging){
+        offsetX += e.clientX - lastX;
+        offsetY += e.clientY - lastY;
+        lastX = e.clientX;
+        lastY = e.clientY;
+        draw();
+    }
+};
 
-    const dx = end.x - start.x;
-    const dy = end.y - start.y;
+canvas.onwheel = e=>{
+    scale += e.deltaY * -0.001;
+    scale = Math.min(Math.max(.5, scale), 3);
+    draw();
+};
 
-    const len = Math.hypot(dx,dy);
+canvas.onclick = e=>{
+    const rect = canvas.getBoundingClientRect();
+    const x = (e.clientX - rect.left - offsetX) / scale;
+    const y = (e.clientY - rect.top - offsetY) / scale;
 
-    const nx = dx/len;
-    const ny = dy/len;
+    if(modo === "inicio") inicio = {x,y};
+    if(modo === "fim") fim = {x,y};
+    if(modo === "drop") drop = {x,y};
 
-    const DISTANCIA = 280; // ajuste fino
+    if(inicio && fim && drop){
+        calcularGod();
+    }
 
-    return {
-        x: drop.x - nx*DISTANCIA,
-        y: drop.y - ny*DISTANCIA
+    draw();
+};
+
+function calcularGod(){
+    // projeção do drop na linha do ônibus
+    const dx = fim.x - inicio.x;
+    const dy = fim.y - inicio.y;
+
+    const t = ((drop.x - inicio.x)*dx + (drop.y - inicio.y)*dy) / (dx*dx + dy*dy);
+
+    const px = inicio.x + t * dx;
+    const py = inicio.y + t * dy;
+
+    // distância ideal (ajuste fino estilo pro)
+    const distancia = 120;
+
+    const len = Math.sqrt(dx*dx + dy*dy);
+
+    god = {
+        x: px - (dx/len) * distancia,
+        y: py - (dy/len) * distancia
     };
 }
 
-// desenhar
-function desenhar(){
+function draw(){
+    ctx.setTransform(1,0,0,1,0,0);
     ctx.clearRect(0,0,canvas.width,canvas.height);
-    ctx.drawImage(mapa,0,0,canvas.width,canvas.height);
 
-    // linha ônibus
-    if(start && end){
-        ctx.strokeStyle="#00ffff";
-        ctx.lineWidth=2;
+    ctx.setTransform(scale,0,0,scale,offsetX,offsetY);
+
+    ctx.drawImage(mapa,0,0,1000,1000);
+
+    // linha do ônibus
+    if(inicio && fim){
+        ctx.strokeStyle = "cyan";
+        ctx.lineWidth = 3;
         ctx.beginPath();
-        ctx.moveTo(start.x,start.y);
-        ctx.lineTo(end.x,end.y);
+        ctx.moveTo(inicio.x,inicio.y);
+        ctx.lineTo(fim.x,fim.y);
         ctx.stroke();
     }
 
-    const af = calcularAfundar();
-
-    if(af && drop){
-
-        // linha principal
-        ctx.strokeStyle="yellow";
-        ctx.lineWidth=3;
+    // linha GOD
+    if(god && drop){
+        ctx.strokeStyle = "yellow";
+        ctx.lineWidth = 3;
         ctx.beginPath();
-        ctx.moveTo(af.x,af.y);
+        ctx.moveTo(god.x,god.y);
         ctx.lineTo(drop.x,drop.y);
         ctx.stroke();
-
-        // ponto afundar
-        ctx.fillStyle="yellow";
-        ctx.beginPath();
-        ctx.arc(af.x,af.y,8,0,Math.PI*2);
-        ctx.fill();
     }
 
-    // drop
-    if(drop){
-        ctx.fillStyle="red";
-        ctx.beginPath();
-        ctx.arc(drop.x,drop.y,7,0,Math.PI*2);
-        ctx.fill();
-    }
-
-    // ônibus pontos
-    if(start){
-        ctx.fillStyle="#00ffff";
-        ctx.beginPath();
-        ctx.arc(start.x,start.y,6,0,Math.PI*2);
-        ctx.fill();
-    }
-
-    if(end){
-        ctx.fillStyle="#00ffff";
-        ctx.beginPath();
-        ctx.arc(end.x,end.y,6,0,Math.PI*2);
-        ctx.fill();
-    }
+    drawPoint(inicio,"blue");
+    drawPoint(fim,"blue");
+    drawPoint(drop,"red");
+    drawPoint(god,"yellow");
 }
 
-mapa.onload = desenhar;
+function drawPoint(p,color){
+    if(!p) return;
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.arc(p.x,p.y,8,0,Math.PI*2);
+    ctx.fill();
+}
+
+function reset(){
+    inicio = fim = drop = god = null;
+    draw();
+}
+
+mapa.onload = draw;
 </script>
 
 </body>
