@@ -7,38 +7,29 @@
 <style>
 body {
     margin: 0;
-    font-family: Arial, sans-serif;
     background: #0b0f1a;
     color: white;
+    font-family: Arial;
     text-align: center;
 }
 
-h1 {
-    margin-top: 20px;
-}
+h1 { margin: 15px; }
 
-.controls {
-    margin: 20px;
-}
+.controls { margin: 10px; }
 
 button {
     background: #00ff88;
     border: none;
-    padding: 10px 15px;
+    padding: 10px;
     margin: 5px;
     border-radius: 8px;
-    font-weight: bold;
     cursor: pointer;
-}
-
-button:hover {
-    background: #00cc6a;
+    font-weight: bold;
 }
 
 canvas {
-    border-radius: 15px;
-    margin-bottom: 20px;
-    max-width: 95%;
+    border-radius: 12px;
+    cursor: grab;
 }
 </style>
 </head>
@@ -61,7 +52,7 @@ const canvas = document.getElementById("mapa");
 const ctx = canvas.getContext("2d");
 
 const mapa = new Image();
-mapa.src = "mapa.jpg"; // coloque sua imagem aqui
+mapa.src = "mapa.jpg";
 
 let modo = "start";
 
@@ -69,145 +60,196 @@ let busStart = null;
 let busEnd = null;
 let drop = null;
 
-// clique no mapa
-canvas.addEventListener("click", (e) => {
-    const rect = canvas.getBoundingClientRect();
-    const x = (e.clientX - rect.left) * (canvas.width / rect.width);
-    const y = (e.clientY - rect.top) * (canvas.height / rect.height);
+// ================= ZOOM / PAN =================
+let scale = 1;
+let offsetX = 0;
+let offsetY = 0;
+let dragging = false;
+let lastX, lastY;
 
-    if (modo === "start") busStart = { x, y };
-    if (modo === "end") busEnd = { x, y };
-    if (modo === "drop") drop = { x, y };
+canvas.addEventListener("mousedown", e=>{
+    dragging = true;
+    lastX = e.clientX;
+    lastY = e.clientY;
+});
+
+canvas.addEventListener("mouseup", ()=> dragging = false);
+
+canvas.addEventListener("mousemove", e=>{
+    if(dragging){
+        offsetX += e.clientX - lastX;
+        offsetY += e.clientY - lastY;
+        lastX = e.clientX;
+        lastY = e.clientY;
+        desenhar();
+    }
+});
+
+canvas.addEventListener("wheel", e=>{
+    e.preventDefault();
+    const zoom = e.deltaY < 0 ? 1.1 : 0.9;
+    scale *= zoom;
+    desenhar();
+});
+
+// ================= CLIQUE =================
+canvas.addEventListener("click", e=>{
+    const rect = canvas.getBoundingClientRect();
+
+    const x = (e.clientX - rect.left - offsetX)/scale;
+    const y = (e.clientY - rect.top - offsetY)/scale;
+
+    if(modo === "start") busStart = {x,y};
+    if(modo === "end") busEnd = {x,y};
+    if(modo === "drop") drop = {x,y};
 
     desenhar();
 });
 
-// reset
-function reset() {
-    busStart = null;
-    busEnd = null;
-    drop = null;
+function reset(){
+    busStart = busEnd = drop = null;
     desenhar();
 }
 
-// cálculo PRO (com ajuste lateral realista)
-function calcularDropPro(busStart, busEnd, drop) {
+// ================= FNCS SYSTEM =================
+const FNCS = {
+    placement: {1:65,2:56,3:52,4:48,5:44,6:40,7:38,8:36,9:34,10:32},
+    kill: 2
+};
+
+function calcularPontos(partidas, placement, kills){
+    let total = 0;
+
+    for(let i=0;i<partidas;i++){
+        total += (FNCS.placement[Math.round(placement)]||0) + (kills*FNCS.kill);
+    }
+
+    return total;
+}
+
+// ================= IA MELHOR GOD =================
+function melhorGod(){
     const dx = busEnd.x - busStart.x;
     const dy = busEnd.y - busStart.y;
 
-    const length = Math.sqrt(dx * dx + dy * dy);
+    const len = Math.hypot(dx,dy);
+    const nx = dx/len;
+    const ny = dy/len;
 
-    const nx = dx / length;
-    const ny = dy / length;
-
-    // perpendicular (simula drift do glider)
     const px = -ny;
     const py = nx;
 
-    const DISTANCIA_BASE = 280;
-    const AJUSTE_LATERAL = 60;
+    let best = null;
+    let bestScore = Infinity;
 
-    const afundarX = drop.x - nx * DISTANCIA_BASE + px * AJUSTE_LATERAL;
-    const afundarY = drop.y - ny * DISTANCIA_BASE + py * AJUSTE_LATERAL;
+    for(let d=200; d<=400; d+=20){
+        for(let lat=-120; lat<=120; lat+=20){
 
-    const distancia = Math.sqrt(
-        (drop.x - afundarX) ** 2 +
-        (drop.y - afundarY) ** 2
-    );
+            const x = drop.x - nx*d + px*lat;
+            const y = drop.y - ny*d + py*lat;
 
-    const tempo = (distancia / 120).toFixed(1);
+            const dist = Math.hypot(drop.x-x, drop.y-y);
+            const tempo = dist / 120;
 
-    return {
-        afundar: { x: afundarX, y: afundarY },
-        tempo: tempo
-    };
+            const score = tempo + Math.abs(lat)*0.01;
+
+            if(score < bestScore){
+                bestScore = score;
+                best = {x,y,tempo};
+            }
+        }
+    }
+
+    return best;
 }
 
-// desenhar setas do ônibus
-function desenharSeta(x, y, dx, dy) {
-    const angle = Math.atan2(dy, dx);
+// ================= SETA ÔNIBUS =================
+function seta(x,y,dx,dy){
+    const ang = Math.atan2(dy,dx);
 
     ctx.save();
-    ctx.translate(x, y);
-    ctx.rotate(angle);
+    ctx.translate(x,y);
+    ctx.rotate(ang);
 
-    ctx.fillStyle = "white";
-
+    ctx.fillStyle="white";
     ctx.beginPath();
-    ctx.moveTo(0, 0);
-    ctx.lineTo(-8, -4);
-    ctx.lineTo(-8, 4);
+    ctx.moveTo(0,0);
+    ctx.lineTo(-8,-4);
+    ctx.lineTo(-8,4);
     ctx.closePath();
     ctx.fill();
 
     ctx.restore();
 }
 
-// desenhar tudo
-function desenhar() {
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    ctx.drawImage(mapa, 0, 0, canvas.width, canvas.height);
+// ================= DESENHAR =================
+function desenhar(){
 
-    // direção do ônibus (com setas)
-    if (busStart && busEnd) {
+    ctx.setTransform(1,0,0,1,0,0);
+    ctx.clearRect(0,0,canvas.width,canvas.height);
+
+    ctx.setTransform(scale,0,0,scale,offsetX,offsetY);
+    ctx.drawImage(mapa,0,0,canvas.width,canvas.height);
+
+    // ônibus direção
+    if(busStart && busEnd){
         const dx = busEnd.x - busStart.x;
         const dy = busEnd.y - busStart.y;
 
-        const steps = 25;
-
-        for (let i = 0; i < steps; i++) {
-            const t = i / steps;
-
-            const x = busStart.x + dx * t;
-            const y = busStart.y + dy * t;
-
-            desenharSeta(x, y, dx, dy);
+        for(let i=0;i<25;i++){
+            const t = i/25;
+            const x = busStart.x + dx*t;
+            const y = busStart.y + dy*t;
+            seta(x,y,dx,dy);
         }
     }
 
-    // cálculo drop
-    if (busStart && busEnd && drop) {
-        const calc = calcularDropPro(busStart, busEnd, drop);
-        const afundar = calc.afundar;
+    // IA drop
+    if(busStart && busEnd && drop){
 
-        // linha amarela
-        ctx.strokeStyle = "yellow";
-        ctx.lineWidth = 3;
+        const best = melhorGod();
+
+        const control = {
+            x: (best.x + drop.x)/2,
+            y: (best.y + drop.y)/2 - 80
+        };
+
+        // curva
+        ctx.strokeStyle="yellow";
+        ctx.lineWidth=3;
         ctx.beginPath();
-        ctx.moveTo(afundar.x, afundar.y);
-        ctx.lineTo(drop.x, drop.y);
+        ctx.moveTo(best.x,best.y);
+        ctx.quadraticCurveTo(control.x,control.y,drop.x,drop.y);
         ctx.stroke();
 
-        // ponto de afundar (principal)
-        ctx.fillStyle = "yellow";
+        // ponto IA
+        ctx.fillStyle="yellow";
         ctx.beginPath();
-        ctx.arc(afundar.x, afundar.y, 8, 0, Math.PI * 2);
+        ctx.arc(best.x,best.y,10,0,Math.PI*2);
         ctx.fill();
 
-        // ponto final (drop)
-        ctx.fillStyle = "red";
+        // drop
+        ctx.fillStyle="red";
         ctx.beginPath();
-        ctx.arc(drop.x, drop.y, 8, 0, Math.PI * 2);
+        ctx.arc(drop.x,drop.y,8,0,Math.PI*2);
         ctx.fill();
 
-        // tempo do glider
-        ctx.fillStyle = "white";
-        ctx.font = "bold 14px Arial";
-        ctx.fillText(calc.tempo + "s", afundar.x + 10, afundar.y - 10);
+        // tempo
+        ctx.fillStyle="white";
+        ctx.fillText(best.tempo.toFixed(1)+"s", best.x+10, best.y-10);
     }
 
-    // pontos do ônibus
-    if (busStart) {
-        ctx.fillStyle = "#00ffff";
+    if(busStart){
+        ctx.fillStyle="#00ffff";
         ctx.beginPath();
-        ctx.arc(busStart.x, busStart.y, 6, 0, Math.PI * 2);
+        ctx.arc(busStart.x,busStart.y,6,0,Math.PI*2);
         ctx.fill();
     }
 
-    if (busEnd) {
-        ctx.fillStyle = "#00ffff";
+    if(busEnd){
+        ctx.fillStyle="#00ffff";
         ctx.beginPath();
-        ctx.arc(busEnd.x, busEnd.y, 6, 0, Math.PI * 2);
+        ctx.arc(busEnd.x,busEnd.y,6,0,Math.PI*2);
         ctx.fill();
     }
 }
