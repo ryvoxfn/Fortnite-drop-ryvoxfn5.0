@@ -1,298 +1,260 @@
 <!DOCTYPE html>
-<html lang="pt-br">
+<html lang="pt-BR">
 <head>
 <meta charset="UTF-8">
-<title>Fortnite Drop PRO PLAYER</title>
+<title>Fortnite Drop IA PRO</title>
 
 <style>
 body {
-  margin:0;
-  overflow:hidden;
-  font-family:Arial;
-  background:#0f172a;
+  margin: 0;
+  background: #0b1a2a;
+  color: white;
+  font-family: Arial;
 }
 
-.panel {
-  position:absolute;
-  background:rgba(0,0,0,0.7);
-  padding:12px;
-  border-radius:10px;
-  color:white;
+#ui {
+  position: absolute;
+  top: 10px;
+  left: 10px;
 }
 
 button {
-  margin:3px;
-  padding:6px;
-  border:none;
-  border-radius:6px;
-  background:#22c55e;
-  color:white;
-  cursor:pointer;
+  margin: 3px;
+  padding: 8px;
+  background: #00c853;
+  border: none;
+  color: white;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+#hud {
+  position: absolute;
+  right: 10px;
+  top: 10px;
+  background: black;
+  padding: 10px;
+  border-radius: 8px;
+}
+
+canvas {
+  cursor: grab;
 }
 </style>
 </head>
 
 <body>
 
-<!-- HUD -->
-<div class="panel" style="top:10px;right:10px;">
-<b>HUD</b><br>
-Tempo: <span id="tempo">-</span><br>
-Precisão: <span id="precisao">-</span>
+<div id="ui">
+  <button onclick="setMode('start')">Início ônibus</button>
+  <button onclick="setMode('end')">Fim ônibus</button>
+  <button onclick="setMode('drop')">Drop</button>
+  <button onclick="resetAll()">Reset</button>
 </div>
 
-<!-- CONTROLES -->
-<div class="panel" style="top:10px;left:10px;">
-<button onclick="mode='start'">Início ônibus</button>
-<button onclick="mode='end'">Fim ônibus</button>
-<button onclick="mode='drop'">Drop</button>
-<button onclick="resetAll()">Reset</button>
-</div>
+<div id="hud">HUD</div>
 
-<!-- SISTEMA -->
-<div class="panel" style="bottom:10px;left:10px;">
-
-<b>Modo</b><br>
-<select id="modo" onchange="atualizarModo()">
-<option value="ranked">Ranked</option>
-<option value="skin">Skin</option>
-<option value="fncs">FNCS</option>
-<option value="cash">Cash Cup</option>
-</select>
-
-<div id="subModo"></div>
-
-<input id="pontosAtual" placeholder="Pontos atuais"><br>
-<input id="meta" placeholder="Meta"><br>
-<input id="kills" placeholder="Kills"><br>
-<input id="placement" placeholder="Placement"><br>
-
-<button onclick="toggleKill()" id="killToggle">Kill OFF</button><br>
-
-<button onclick="calcularPontos()">Calcular</button>
-<button onclick="preverClassificacao()">Prever</button>
-
-<div id="resultado"></div>
-
-</div>
-
-<!-- BARRA -->
-<div class="panel" style="bottom:10px;right:10px;width:250px;">
-<div style="background:#1e293b;height:20px;border-radius:10px;">
-<div id="barra" style="height:100%;width:0%;background:linear-gradient(to right,red,yellow,green);"></div>
-</div>
-<div id="previsao"></div>
-</div>
-
-<!-- APOIADOR -->
-<div style="
-position:absolute;
-bottom:10px;
-left:50%;
-transform:translateX(-50%);
-background:#0f172a;
-padding:10px 20px;
-border-radius:10px;
-border:1px solid #334155;
-color:white;
-font-size:14px;
-">
-Apoie o criador: <b style="color:#22c55e;">KLGAMERYT03</b> na loja 🎮
-</div>
-
-<script src="https://cdn.jsdelivr.net/npm/three@0.158/build/three.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/three@0.158/examples/js/controls/OrbitControls.js"></script>
+<canvas id="map" width="900" height="600"></canvas>
 
 <script>
+const canvas = document.getElementById("map");
+const ctx = canvas.getContext("2d");
 
-// ===== 3D =====
-const scene = new THREE.Scene();
+let mapImg = new Image();
+mapImg.src = "mapa.jpg"; // 🔥 CONFERE ISSO
 
-const camera = new THREE.PerspectiveCamera(
-  70,
-  window.innerWidth/window.innerHeight,
-  0.1,
-  2000
-);
-camera.position.set(0,200,300);
+let mode = "start";
 
-const renderer = new THREE.WebGLRenderer();
-renderer.setSize(window.innerWidth, window.innerHeight);
-renderer.setClearColor(0x0f172a);
-document.body.appendChild(renderer.domElement);
+let busStart = null;
+let busEnd = null;
+let drop = null;
 
-const controls = new THREE.OrbitControls(camera, renderer.domElement);
+let offsetX = 0;
+let offsetY = 0;
+let scale = 1;
+let dragging = false;
+let lastX, lastY;
 
-const light = new THREE.DirectionalLight(0xffffff,1);
-light.position.set(100,200,100);
-scene.add(light);
+// 🔥 ZOOM
+canvas.addEventListener("wheel", e => {
+  e.preventDefault();
+  scale += e.deltaY * -0.001;
+  scale = Math.max(0.5, Math.min(3, scale));
+});
 
-// ===== MAPA (COM CAMINHO CORRIGIDO) =====
-const geo = new THREE.PlaneGeometry(500,500,256,256);
+// 🔥 DRAG
+canvas.addEventListener("mousedown", e => {
+  dragging = true;
+  lastX = e.offsetX;
+  lastY = e.offsetY;
+});
 
-const texture = new THREE.TextureLoader().load(
-  'https://ryvoxfn.github.io/Fortnite-drop-ryvoxfn5.0/mapa.jpg'
-);
+canvas.addEventListener("mouseup", () => dragging = false);
 
-const mat = new THREE.MeshStandardMaterial({map:texture});
-const plane = new THREE.Mesh(geo,mat);
-plane.rotation.x = -Math.PI/2;
-scene.add(plane);
-
-// ===== HEIGHTMAP CORRIGIDO =====
-new THREE.TextureLoader().load(
-  'https://ryvoxfn.github.io/Fortnite-drop-ryvoxfn5.0/heightmap.png',
-  texture => {
-
-    const img = texture.image;
-
-    const canvas = document.createElement('canvas');
-    const ctx = canvas.getContext('2d');
-
-    canvas.width = img.width;
-    canvas.height = img.height;
-
-    ctx.drawImage(img,0,0);
-
-    const data = ctx.getImageData(0,0,img.width,img.height).data;
-
-    for(let i=0;i<geo.attributes.position.count;i++){
-      let x = i % img.width;
-      let y = Math.floor(i / img.width);
-
-      let h = data[(y * img.width + x) * 4];
-
-      geo.attributes.position.array[i*3+2] = h * 0.4;
-    }
-
-    geo.computeVertexNormals();
-  }
-);
-
-// ===== CLIQUE =====
-let mode="start", busStart, busEnd, drop;
-
-const ray = new THREE.Raycaster();
-const mouse = new THREE.Vector2();
-
-window.addEventListener("click", e=>{
-  mouse.x = (e.clientX/window.innerWidth)*2-1;
-  mouse.y = -(e.clientY/window.innerHeight)*2+1;
-
-  ray.setFromCamera(mouse,camera);
-  const hit = ray.intersectObject(plane);
-
-  if(hit.length){
-    let p = hit[0].point;
-
-    if(mode==="start") busStart = p;
-    if(mode==="end") busEnd = p;
-    if(mode==="drop") drop = p;
-
-    calculateJump();
+canvas.addEventListener("mousemove", e => {
+  if (dragging) {
+    offsetX += e.offsetX - lastX;
+    offsetY += e.offsetY - lastY;
+    lastX = e.offsetX;
+    lastY = e.offsetY;
   }
 });
 
-// ===== TRAJETÓRIA =====
-function drawTrajectory(a,b){
-  if(!a||!b) return;
+// 🔥 CLICK
+canvas.addEventListener("click", e => {
+  const x = (e.offsetX - offsetX) / scale;
+  const y = (e.offsetY - offsetY) / scale;
 
-  const pts = [];
+  if (mode === "start") busStart = { x, y };
+  if (mode === "end") busEnd = { x, y };
+  if (mode === "drop") drop = { x, y };
+});
 
-  for(let i=0;i<=50;i++){
-    let t = i/50;
-
-    pts.push(new THREE.Vector3(
-      a.x+(b.x-a.x)*t,
-      a.y+(b.y-a.y)*t + Math.sin(t*Math.PI)*30,
-      a.z+(b.z-a.z)*t
-    ));
-  }
-
-  const g = new THREE.BufferGeometry().setFromPoints(pts);
-  const l = new THREE.Line(g,new THREE.LineBasicMaterial({color:0xffaa00}));
-
-  scene.add(l);
-}
-
-// ===== CÁLCULO =====
-function calculateJump(){
-  if(!busStart || !busEnd || !drop) return;
-
-  drawTrajectory(busStart, drop);
-
-  document.getElementById("tempo").innerText = "~20s";
-  document.getElementById("precisao").innerText = "Alta";
-}
-
-// ===== SISTEMA =====
-let killEnabled=false;
-
-function toggleKill(){
-  killEnabled=!killEnabled;
-  document.getElementById("killToggle").innerText =
-    killEnabled ? "Kill ON" : "Kill OFF";
-}
-
-function atualizarModo(){
-  const modo=document.getElementById("modo").value;
-  const sub=document.getElementById("subModo");
-
-  if(modo==="fncs"){
-    sub.innerHTML=`<select><option>Div1</option><option>Div2</option><option>Div3</option></select>`;
-  } else {
-    sub.innerHTML="";
-  }
-}
-
-function calcularPontos(){
-  let atual=+pontosAtual.value;
-  let kills=+kills.value;
-  let placement=+placement.value;
-
-  let pontos=0;
-
-  if(killEnabled) pontos+=kills*2;
-
-  if(placement==1) pontos+=60;
-  else if(placement<=10) pontos+=30;
-  else pontos+=10;
-
-  resultado.innerHTML="Total: "+(atual+pontos);
-}
-
-// ===== PREVISÃO =====
-function preverClassificacao(){
-  let atual=+pontosAtual.value;
-  let meta=+meta.value;
-
-  let falta=meta-atual;
-
-  let minPartidas=Math.ceil(falta/60);
-  let maxPartidas=Math.ceil(falta/15);
-
-  barra.style.width=(atual/meta*100)+"%";
-
-  previsao.innerHTML=
-    "🔴 "+maxPartidas+" partidas (seguro)<br>"+
-    "🟢 "+minPartidas+" partidas (agressivo)";
-}
-
-// ===== RESET =====
+function setMode(m){ mode = m; }
 function resetAll(){
-  busStart = null;
-  busEnd = null;
-  drop = null;
+  busStart = busEnd = drop = null;
 }
 
-// ===== LOOP =====
-function animate(){
-  requestAnimationFrame(animate);
-  controls.update();
-  renderer.render(scene,camera);
+// 🧠 FUNÇÕES
+function distance(a,b){
+  return Math.hypot(a.x-b.x, a.y-b.y);
 }
-animate();
 
+function normalize(v){
+  const len = Math.hypot(v.x,v.y);
+  return { x: v.x/len, y: v.y/len };
+}
+
+// 🧠 IA SIMULAÇÃO
+function simulateDrop(jumpPoint, dropPoint) {
+  const diveTime = 14;
+  const glideTime = 20;
+
+  const diveSpeed = 120;
+  const glideSpeed = 60;
+
+  let pos = { ...jumpPoint };
+  let dir = normalize({
+    x: dropPoint.x - pos.x,
+    y: dropPoint.y - pos.y
+  });
+
+  let time = 0;
+
+  for (let t=0; t<diveTime; t+=0.1){
+    pos.x += dir.x * diveSpeed * 0.1;
+    pos.y += dir.y * diveSpeed * 0.1;
+    time += 0.1;
+  }
+
+  dir = normalize({
+    x: dropPoint.x - pos.x,
+    y: dropPoint.y - pos.y
+  });
+
+  for (let t=0; t<glideTime; t+=0.1){
+    pos.x += dir.x * glideSpeed * 0.1;
+    pos.y += dir.y * glideSpeed * 0.1;
+    time += 0.1;
+  }
+
+  return {
+    time,
+    dist: distance(pos, dropPoint),
+    final: pos
+  };
+}
+
+// 🧠 IA MELHOR PULO
+function findBestJump(){
+  if (!busStart || !busEnd || !drop) return null;
+
+  let best = null;
+
+  for (let t=0; t<=30; t+=0.3){
+    const p = t/30;
+
+    const busPos = {
+      x: busStart.x + (busEnd.x - busStart.x)*p,
+      y: busStart.y + (busEnd.y - busStart.y)*p
+    };
+
+    const sim = simulateDrop(busPos, drop);
+
+    const score = sim.dist + sim.time*2;
+
+    if (!best || score < best.score){
+      best = { jump: busPos, sim, score };
+    }
+  }
+
+  return best;
+}
+
+// 🎯 DESENHO
+function draw(){
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+
+  ctx.save();
+  ctx.translate(offsetX, offsetY);
+  ctx.scale(scale, scale);
+
+  ctx.drawImage(mapImg, 0, 0, 900, 600);
+
+  if (busStart){
+    ctx.fillStyle="blue";
+    ctx.beginPath();
+    ctx.arc(busStart.x,busStart.y,6,0,Math.PI*2);
+    ctx.fill();
+  }
+
+  if (busEnd){
+    ctx.fillStyle="red";
+    ctx.beginPath();
+    ctx.arc(busEnd.x,busEnd.y,6,0,Math.PI*2);
+    ctx.fill();
+  }
+
+  if (drop){
+    ctx.fillStyle="purple";
+    ctx.beginPath();
+    ctx.arc(drop.x,drop.y,6,0,Math.PI*2);
+    ctx.fill();
+  }
+
+  const result = findBestJump();
+
+  if (result){
+    const j = result.jump;
+
+    ctx.fillStyle="orange";
+    ctx.beginPath();
+    ctx.arc(j.x,j.y,8,0,Math.PI*2);
+    ctx.fill();
+
+    ctx.strokeStyle="yellow";
+    ctx.beginPath();
+    ctx.moveTo(j.x,j.y);
+    ctx.lineTo(drop.x,drop.y);
+    ctx.stroke();
+
+    updateHUD(result.sim);
+  }
+
+  ctx.restore();
+
+  requestAnimationFrame(draw);
+}
+
+// 🧠 HUD
+function updateHUD(sim){
+  document.getElementById("hud").innerHTML =
+    "Tempo: " + sim.time.toFixed(1) + "s<br>" +
+    "Erro: " + sim.dist.toFixed(0) + "px<br>" +
+    (sim.dist < 50 ? "🔥 PERFECT DROP" : "⚠️ Ajustar");
+}
+
+mapImg.onload = draw;
 </script>
 
 </body>
