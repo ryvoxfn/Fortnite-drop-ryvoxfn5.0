@@ -2,46 +2,50 @@
 <html lang="pt-br">
 <head>
 <meta charset="UTF-8">
-<title>Fortnite Drop PRO</title>
+<title>Fortnite Drop – PRO AI</title>
 
 <style>
 body {
-    margin: 0;
-    background: #0b1a2f;
-    font-family: Arial;
-    color: white;
-    text-align: center;
+  margin:0;
+  background:#0b1a2f;
+  font-family:Arial;
+  overflow:hidden;
+  color:white;
 }
 
-#topbar {
-    position: absolute;
-    top: 10px;
-    left: 10px;
-    z-index: 10;
+#topbar{
+  position:absolute;
+  top:10px;
+  left:10px;
+  z-index:10;
 }
 
-button {
-    padding: 10px;
-    margin: 3px;
-    border-radius: 8px;
-    border: none;
-    background: #00c853;
-    color: white;
-    font-weight: bold;
-    cursor: pointer;
+button{
+  padding:10px;
+  margin:3px;
+  border:none;
+  border-radius:8px;
+  background:#22c55e;
+  color:white;
+  font-weight:bold;
+  cursor:pointer;
 }
 
-canvas {
-    margin-top: 60px;
-    border: 2px solid #000;
+#hud{
+  position:absolute;
+  top:10px;
+  right:10px;
+  background:#000000cc;
+  padding:10px;
+  border-radius:10px;
+  font-size:14px;
 }
-#hud {
-    position: absolute;
-    top: 10px;
-    right: 10px;
-    background: #000000aa;
-    padding: 10px;
-    border-radius: 10px;
+
+canvas{
+  cursor:grab;
+}
+canvas:active{
+  cursor:grabbing;
 }
 </style>
 </head>
@@ -49,165 +53,227 @@ canvas {
 <body>
 
 <div id="topbar">
-    <button onclick="setBusStart()">Início ônibus</button>
-    <button onclick="setBusEnd()">Fim ônibus</button>
-    <button onclick="setDrop()">Drop</button>
-    <button onclick="resetAll()">Reset</button>
+  <button onclick="mode='start'">Início ônibus</button>
+  <button onclick="mode='end'">Fim ônibus</button>
+  <button onclick="mode='drop'">Drop</button>
+  <button onclick="resetAll()">Reset</button>
 </div>
 
-<div id="hud">
-    Tempo: <span id="tempo">0</span>s<br>
-    Distância: <span id="dist">0</span>px<br>
-    IA: <span id="ia">-</span>
-</div>
+<div id="hud">Carregando...</div>
 
-<canvas id="map" width="900" height="900"></canvas>
+<canvas id="map"></canvas>
 
 <script>
 const canvas = document.getElementById("map");
 const ctx = canvas.getContext("2d");
 
-const mapa = new Image();
-mapa.src = "mapa.jpg"; // IMPORTANTE: mesmo nome do seu arquivo
+canvas.width = window.innerWidth;
+canvas.height = window.innerHeight;
 
-let busStart = null;
-let busEnd = null;
-let drop = null;
+// ===== MAPA =====
+const mapImg = new Image();
 
+// 👉 tente local primeiro
+mapImg.src = "mapa.jpg";
+
+// 👉 fallback (se usar GitHub Pages, coloque seu link aqui)
+mapImg.onerror = () => {
+  mapImg.src = "https://ryvoxfn.github.io/Fortnite-drop-ryvoxfn5.0/mapa.jpg";
+};
+
+mapImg.onload = () => draw();
+
+// ===== ESTADO =====
 let mode = "";
+let busStart=null, busEnd=null, drop=null;
 
-canvas.addEventListener("click", (e) => {
-    const rect = canvas.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const y = e.clientY - rect.top;
+let scale=1, offsetX=0, offsetY=0;
+let dragging=false, lastX=0, lastY=0;
 
-    if (mode === "start") busStart = {x,y};
-    if (mode === "end") busEnd = {x,y};
-    if (mode === "drop") drop = {x,y};
+// ===== INTERAÇÃO =====
+canvas.addEventListener("click",(e)=>{
+  const x = (e.offsetX - offsetX)/scale;
+  const y = (e.offsetY - offsetY)/scale;
 
-    draw();
+  if(mode==="start") busStart={x,y};
+  if(mode==="end") busEnd={x,y};
+  if(mode==="drop") drop={x,y};
 });
 
-function setBusStart(){ mode="start"; }
-function setBusEnd(){ mode="end"; }
-function setDrop(){ mode="drop"; }
+canvas.addEventListener("wheel",(e)=>{
+  e.preventDefault();
+  scale += e.deltaY * -0.001;
+  scale = Math.max(0.5, Math.min(3, scale));
+});
+
+canvas.addEventListener("mousedown",(e)=>{
+  dragging=true;
+  lastX=e.offsetX;
+  lastY=e.offsetY;
+});
+canvas.addEventListener("mouseup",()=>dragging=false);
+canvas.addEventListener("mousemove",(e)=>{
+  if(dragging){
+    offsetX += e.offsetX-lastX;
+    offsetY += e.offsetY-lastY;
+    lastX=e.offsetX;
+    lastY=e.offsetY;
+  }
+});
 
 function resetAll(){
-    busStart = null;
-    busEnd = null;
-    drop = null;
-    document.getElementById("tempo").innerText = "0";
-    document.getElementById("dist").innerText = "0";
-    document.getElementById("ia").innerText = "-";
-    draw();
+  busStart=busEnd=drop=null;
 }
 
-// ====== FÍSICA MAIS REALISTA ======
-function calcularTempo(dist){
-    let queda = 14; // tempo queda livre
-    let glide = 20; // tempo glider
-    let total = queda + glide;
-
-    // ajuste baseado na distância horizontal
-    total += dist / 300;
-
-    return total.toFixed(1);
+// ===== UTILS =====
+function dist(a,b){
+  return Math.hypot(a.x-b.x,a.y-b.y);
+}
+function normalize(v){
+  let l=Math.hypot(v.x,v.y);
+  return {x:v.x/l,y:v.y/l};
 }
 
-// ===== IA MELHOR DROP =====
-function calcularMelhorDrop(){
-    if(!busStart || !busEnd) return;
+// ===== FÍSICA (APROX REALISTA) =====
+const DIVE_SPEED = 160;
+const GLIDE_SPEED = 70;
+const GLIDE_TRIGGER_DIST = 300;
 
-    let melhor = null;
-    let melhorScore = 999999;
+// simula trajetória curva (queda + glider)
+function simulatePath(start, target){
+  let pos={...start};
+  let path=[{...pos}];
 
-    for(let i=0;i<=1;i+=0.01){
-        let x = busStart.x + (busEnd.x - busStart.x)*i;
-        let y = busStart.y + (busEnd.y - busStart.y)*i;
+  let totalDist = dist(start,target);
 
-        let dist = Math.hypot(drop.x - x, drop.y - y);
+  let diveDist = Math.max(0, totalDist - GLIDE_TRIGGER_DIST);
 
-        let tempo = 14 + 20 + dist/300;
+  let dir = normalize({x:target.x-pos.x,y:target.y-pos.y});
 
-        if(tempo < melhorScore){
-            melhorScore = tempo;
-            melhor = {x,y};
-        }
+  // queda
+  let steps = 40;
+  for(let i=0;i<steps;i++){
+    pos.x += dir.x*(diveDist/steps);
+    pos.y += dir.y*(diveDist/steps);
+    path.push({...pos});
+  }
+
+  // glider (mais lento)
+  dir = normalize({x:target.x-pos.x,y:target.y-pos.y});
+  for(let i=0;i<steps;i++){
+    pos.x += dir.x*((totalDist-diveDist)/steps);
+    pos.y += dir.y*((totalDist-diveDist)/steps);
+    path.push({...pos});
+  }
+
+  return path;
+}
+
+// tempo baseado na distância
+function calcTime(start,target){
+  let d = dist(start,target);
+  let dive = Math.max(0, d-GLIDE_TRIGGER_DIST)/DIVE_SPEED;
+  let glide = Math.min(d,GLIDE_TRIGGER_DIST)/GLIDE_SPEED;
+  return dive+glide;
+}
+
+// ===== IA MELHOR PULO =====
+function findBestJump(){
+  if(!busStart || !busEnd || !drop) return null;
+
+  let best=null;
+
+  for(let t=0;t<=1;t+=0.01){
+    let pos={
+      x:busStart.x+(busEnd.x-busStart.x)*t,
+      y:busStart.y+(busEnd.y-busStart.y)*t
+    };
+
+    let time = calcTime(pos,drop);
+
+    if(!best || time < best.time){
+      best={pos,time};
     }
-
-    return melhor;
+  }
+  return best;
 }
 
+// ===== DESENHO =====
 function draw(){
-    ctx.clearRect(0,0,canvas.width,canvas.height);
-    ctx.drawImage(mapa,0,0,canvas.width,canvas.height);
+  ctx.clearRect(0,0,canvas.width,canvas.height);
 
-    // linha ônibus
-    if(busStart && busEnd){
-        ctx.strokeStyle = "yellow";
-        ctx.lineWidth = 3;
-        ctx.beginPath();
-        ctx.moveTo(busStart.x, busStart.y);
-        ctx.lineTo(busEnd.x, busEnd.y);
-        ctx.stroke();
+  ctx.save();
+  ctx.translate(offsetX,offsetY);
+  ctx.scale(scale,scale);
 
-        // direção (setinhas)
-        for(let i=0;i<=1;i+=0.05){
-            let x = busStart.x + (busEnd.x - busStart.x)*i;
-            let y = busStart.y + (busEnd.y - busStart.y)*i;
+  ctx.drawImage(mapImg,0,0,900,600);
 
-            ctx.fillStyle = "white";
-            ctx.fillRect(x,y,3,3);
-        }
+  // linha ônibus com setas
+  if(busStart && busEnd){
+    ctx.strokeStyle="white";
+    ctx.lineWidth=3;
+    ctx.beginPath();
+    ctx.moveTo(busStart.x,busStart.y);
+    ctx.lineTo(busEnd.x,busEnd.y);
+    ctx.stroke();
+
+    let angle=Math.atan2(busEnd.y-busStart.y,busEnd.x-busStart.x);
+    let d=dist(busStart,busEnd);
+
+    for(let i=0;i<d;i+=25){
+      let x=busStart.x+Math.cos(angle)*i;
+      let y=busStart.y+Math.sin(angle)*i;
+
+      ctx.save();
+      ctx.translate(x,y);
+      ctx.rotate(angle);
+      ctx.fillStyle="#ffffffcc";
+      ctx.beginPath();
+      ctx.moveTo(0,0);
+      ctx.lineTo(-10,-6);
+      ctx.lineTo(-10,6);
+      ctx.closePath();
+      ctx.fill();
+      ctx.restore();
     }
+  }
 
-    // pontos
-    if(busStart){
-        ctx.fillStyle="blue";
-        ctx.beginPath();
-        ctx.arc(busStart.x,busStart.y,6,0,Math.PI*2);
-        ctx.fill();
-    }
+  // pontos
+  function drawPoint(p,color){
+    if(!p)return;
+    ctx.fillStyle=color;
+    ctx.beginPath();
+    ctx.arc(p.x,p.y,6,0,Math.PI*2);
+    ctx.fill();
+  }
 
-    if(busEnd){
-        ctx.fillStyle="red";
-        ctx.beginPath();
-        ctx.arc(busEnd.x,busEnd.y,6,0,Math.PI*2);
-        ctx.fill();
-    }
+  drawPoint(busStart,"blue");
+  drawPoint(busEnd,"red");
+  drawPoint(drop,"purple");
 
-    if(drop){
-        ctx.fillStyle="lime";
-        ctx.beginPath();
-        ctx.arc(drop.x,drop.y,6,0,Math.PI*2);
-        ctx.fill();
-    }
+  // IA + trajetória
+  let best = findBestJump();
 
-    // ===== IA =====
-    if(busStart && busEnd && drop){
-        let melhor = calcularMelhorDrop();
+  if(best){
+    drawPoint(best.pos,"orange");
 
-        ctx.fillStyle="orange";
-        ctx.beginPath();
-        ctx.arc(melhor.x,melhor.y,8,0,Math.PI*2);
-        ctx.fill();
+    let path = simulatePath(best.pos,drop);
 
-        // linha até o drop
-        ctx.strokeStyle="white";
-        ctx.beginPath();
-        ctx.moveTo(melhor.x, melhor.y);
-        ctx.lineTo(drop.x, drop.y);
-        ctx.stroke();
+    ctx.strokeStyle="yellow";
+    ctx.beginPath();
+    ctx.moveTo(path[0].x,path[0].y);
+    path.forEach(p=>ctx.lineTo(p.x,p.y));
+    ctx.stroke();
 
-        let dist = Math.hypot(drop.x - melhor.x, drop.y - melhor.y);
+    document.getElementById("hud").innerHTML =
+      "Tempo: "+best.time.toFixed(2)+"s<br>"+
+      (best.time<3?"🔥 PERFECT":"⚠️ Ajustar");
+  }
 
-        document.getElementById("tempo").innerText = calcularTempo(dist);
-        document.getElementById("dist").innerText = Math.floor(dist);
-        document.getElementById("ia").innerText = "ATIVA";
-    }
+  ctx.restore();
+
+  requestAnimationFrame(draw);
 }
-
-mapa.onload = draw;
 </script>
 
 </body>
