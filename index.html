@@ -2,242 +2,276 @@
 <html lang="pt-BR">
 <head>
 <meta charset="UTF-8">
-<title>Fortnite Drop IA PRO</title>
+<title>Fortnite Drop PRO</title>
 
 <style>
 body {
-  margin: 0;
-  background: #0b1a2a;
-  font-family: Arial;
+    margin:0;
+    background:#0b1a2a;
+    font-family:Arial;
+    overflow:hidden;
 }
 
-#ui {
-  position: absolute;
-  top: 10px;
-  left: 10px;
+#topbar {
+    position:absolute;
+    top:10px;
+    left:10px;
+    z-index:10;
 }
 
 button {
-  margin: 3px;
-  padding: 8px;
-  background: #22c55e;
-  border: none;
-  color: white;
-  border-radius: 6px;
-  cursor: pointer;
+    background:#22c55e;
+    border:none;
+    padding:8px 12px;
+    margin:3px;
+    border-radius:6px;
+    color:white;
+    cursor:pointer;
 }
 
 #hud {
-  position: absolute;
-  right: 10px;
-  top: 10px;
-  background: rgba(0,0,0,0.8);
-  padding: 10px;
-  border-radius: 8px;
-  color: white;
+    position:absolute;
+    top:10px;
+    right:10px;
+    background:#000a;
+    padding:10px;
+    border-radius:10px;
+    color:white;
+}
+
+canvas {
+    cursor:grab;
+}
+canvas:active {
+    cursor:grabbing;
 }
 </style>
 </head>
 
 <body>
 
-<div id="ui">
-  <button onclick="mode='start'">Início ônibus</button>
-  <button onclick="mode='end'">Fim ônibus</button>
-  <button onclick="mode='drop'">Drop</button>
-  <button onclick="resetAll()">Reset</button>
+<div id="topbar">
+    <button onclick="setPonto('busStart')">Início ônibus</button>
+    <button onclick="setPonto('busEnd')">Fim ônibus</button>
+    <button onclick="setPonto('drop')">🟠 Salte aqui</button>
+    <button onclick="setPonto('glider')">🟢 Abrir glider</button>
+    <button onclick="resetar()">Reset</button>
 </div>
 
-<div id="hud">Carregando mapa...</div>
+<div id="hud">HUD</div>
 
-<canvas id="map" width="900" height="600"></canvas>
+<canvas id="map"></canvas>
 
 <script>
 const canvas = document.getElementById("map");
 const ctx = canvas.getContext("2d");
 
-let mapImg = new Image();
+let img = new Image();
+img.src = "mapa.jpg";
 
-// 🔥 LINK ABSOLUTO (CORRIGIDO)
-mapImg.src = "https://ryvoxfn.github.io/Fortnite-drop-ryvoxfn5.0/mapa.jpg";
+let escala = 1;
+let offsetX = 0;
+let offsetY = 0;
 
-let mode = "start";
-let busStart = null;
-let busEnd = null;
-let drop = null;
+let dragging = false;
+let lastX, lastY;
 
-// zoom / drag
-let offsetX = 0, offsetY = 0, scale = 1;
-let dragging = false, lastX, lastY;
+let modo = null;
 
-// 🧠 FUNÇÕES BASE
-function distance(a,b){
-  return Math.hypot(a.x-b.x, a.y-b.y);
-}
+let pontos = {
+    busStart:null,
+    busEnd:null,
+    drop:null,
+    glider:null
+};
 
-function normalize(v){
-  const len = Math.hypot(v.x,v.y);
-  return { x:v.x/len, y:v.y/len };
-}
+// ======================
+// 🔥 FÍSICA REALISTA
+// ======================
 
-// 🧠 IA SIMULAÇÃO
-function simulateDrop(jump, target){
-  const diveTime = 14;
-  const glideTime = 20;
+const GRAVIDADE = 9.8;
+const ALTURA_ONIBUS = 1000;
+const ALTURA_GLIDER = 300;
 
-  const diveSpeed = 120;
-  const glideSpeed = 60;
+const VELOCIDADE_MAX = 60;
+const VELOCIDADE_GLIDER = 25;
 
-  let pos = { ...jump };
-  let time = 0;
+function simularQueda() {
+    let altura = ALTURA_ONIBUS;
+    let velocidade = 0;
+    let t = 0;
+    let dt = 0.016;
 
-  let dir = normalize({
-    x: target.x - pos.x,
-    y: target.y - pos.y
-  });
+    while (altura > ALTURA_GLIDER) {
+        velocidade += GRAVIDADE * dt;
+        if (velocidade > VELOCIDADE_MAX) velocidade = VELOCIDADE_MAX;
 
-  for (let t=0;t<diveTime;t+=0.1){
-    pos.x += dir.x * diveSpeed * 0.1;
-    pos.y += dir.y * diveSpeed * 0.1;
-    time += 0.1;
-  }
-
-  dir = normalize({
-    x: target.x - pos.x,
-    y: target.y - pos.y
-  });
-
-  for (let t=0;t<glideTime;t+=0.1){
-    pos.x += dir.x * glideSpeed * 0.1;
-    pos.y += dir.y * glideSpeed * 0.1;
-    time += 0.1;
-  }
-
-  return {
-    time,
-    dist: distance(pos,target)
-  };
-}
-
-// 🧠 IA MELHOR PULO
-function findBestJump(){
-  if(!busStart || !busEnd || !drop) return null;
-
-  let best = null;
-
-  for(let t=0;t<=30;t+=0.3){
-    let p = t/30;
-
-    let busPos = {
-      x: busStart.x + (busEnd.x - busStart.x)*p,
-      y: busStart.y + (busEnd.y - busStart.y)*p
-    };
-
-    let sim = simulateDrop(busPos, drop);
-    let score = sim.dist + sim.time*2;
-
-    if(!best || score < best.score){
-      best = { jump: busPos, sim, score };
+        altura -= velocidade * dt;
+        t += dt;
     }
-  }
 
-  return best;
+    return t;
 }
 
-// 🎯 CONTROLES
-canvas.addEventListener("click", e=>{
-  const x = (e.offsetX - offsetX) / scale;
-  const y = (e.offsetY - offsetY) / scale;
+function simularGlider() {
+    let altura = ALTURA_GLIDER;
+    let tempo = 0;
+    let dt = 0.016;
 
-  if(mode==="start") busStart={x,y};
-  if(mode==="end") busEnd={x,y};
-  if(mode==="drop") drop={x,y};
-});
+    while (altura > 0) {
+        altura -= VELOCIDADE_GLIDER * dt;
+        tempo += dt;
+    }
 
-canvas.addEventListener("wheel", e=>{
-  e.preventDefault();
-  scale += e.deltaY * -0.001;
-  scale = Math.max(0.5, Math.min(3, scale));
-});
-
-canvas.addEventListener("mousedown", e=>{
-  dragging=true;
-  lastX=e.offsetX;
-  lastY=e.offsetY;
-});
-
-canvas.addEventListener("mouseup", ()=>dragging=false);
-
-canvas.addEventListener("mousemove", e=>{
-  if(dragging){
-    offsetX += e.offsetX-lastX;
-    offsetY += e.offsetY-lastY;
-    lastX=e.offsetX;
-    lastY=e.offsetY;
-  }
-});
-
-function resetAll(){
-  busStart = busEnd = drop = null;
+    return tempo;
 }
 
+function melhorTiming(altura, velocidade){
+    if(altura <= 250) return "🔥 ABRIR AGORA";
+    if(velocidade > 50 && altura < 400) return "⚠️ PREPARAR";
+    return "⬇️ MERGULHAR";
+}
+
+// ======================
+// 🎯 INTERAÇÃO
+// ======================
+
+function setPonto(tipo){
+    modo = tipo;
+}
+
+canvas.addEventListener("click", (e)=>{
+    const x = (e.offsetX - offsetX)/escala;
+    const y = (e.offsetY - offsetY)/escala;
+
+    if(modo){
+        pontos[modo] = {x,y};
+        modo = null;
+        calcular();
+    }
+});
+
+// zoom
+canvas.addEventListener("wheel", (e)=>{
+    e.preventDefault();
+    const zoom = e.deltaY < 0 ? 1.1 : 0.9;
+    escala *= zoom;
+});
+
+// arrastar mapa
+canvas.addEventListener("mousedown",(e)=>{
+    dragging=true;
+    lastX=e.clientX;
+    lastY=e.clientY;
+});
+
+window.addEventListener("mouseup",()=>dragging=false);
+
+window.addEventListener("mousemove",(e)=>{
+    if(dragging){
+        offsetX += e.clientX - lastX;
+        offsetY += e.clientY - lastY;
+        lastX=e.clientX;
+        lastY=e.clientY;
+    }
+});
+
+// ======================
+// 📏 DISTÂNCIA
+// ======================
+
+function distancia(a,b){
+    return Math.hypot(a.x-b.x,a.y-b.y);
+}
+
+// ======================
+// 🧠 CÁLCULO PRINCIPAL
+// ======================
+
+function calcular(){
+    if(!pontos.drop || !pontos.glider) return;
+
+    const dist = distancia(pontos.drop,pontos.glider);
+
+    const tempoQueda = simularQueda();
+    const tempoGlider = simularGlider();
+
+    const tempoTotal = tempoQueda + tempoGlider;
+
+    const velocidadeAtual = VELOCIDADE_MAX;
+    const decisao = melhorTiming(ALTURA_GLIDER, velocidadeAtual);
+
+    document.getElementById("hud").innerHTML = `
+        Tempo total: ${tempoTotal.toFixed(1)}s<br>
+        Queda: ${tempoQueda.toFixed(1)}s<br>
+        Glider: ${tempoGlider.toFixed(1)}s<br>
+        Distância: ${dist.toFixed(0)} px<br>
+        Decisão: ${decisao}
+    `;
+}
+
+// ======================
 // 🎨 DESENHO
+// ======================
+
 function draw(){
-  ctx.clearRect(0,0,canvas.width,canvas.height);
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
 
-  ctx.save();
-  ctx.translate(offsetX, offsetY);
-  ctx.scale(scale, scale);
+    ctx.setTransform(escala,0,0,escala,offsetX,offsetY);
 
-  // MAPA
-  ctx.drawImage(mapImg, 0, 0, 900, 600);
+    ctx.clearRect(-offsetX/escala,-offsetY/escala,canvas.width/escala,canvas.height/escala);
 
-  function drawPoint(p,color){
-    if(!p) return;
-    ctx.fillStyle=color;
-    ctx.beginPath();
-    ctx.arc(p.x,p.y,6,0,Math.PI*2);
-    ctx.fill();
-  }
+    ctx.drawImage(img,0,0);
 
-  drawPoint(busStart,"blue");
-  drawPoint(busEnd,"red");
-  drawPoint(drop,"purple");
+    // linha ônibus
+    if(pontos.busStart && pontos.busEnd){
+        ctx.strokeStyle="yellow";
+        ctx.lineWidth=2;
+        ctx.beginPath();
+        ctx.moveTo(pontos.busStart.x,pontos.busStart.y);
+        ctx.lineTo(pontos.busEnd.x,pontos.busEnd.y);
+        ctx.stroke();
+    }
 
-  const best = findBestJump();
+    // trajetória
+    if(pontos.drop && pontos.glider){
+        ctx.strokeStyle="orange";
+        ctx.beginPath();
+        ctx.moveTo(pontos.drop.x,pontos.drop.y);
+        ctx.lineTo(pontos.glider.x,pontos.glider.y);
+        ctx.stroke();
+    }
 
-  if(best){
-    const j = best.jump;
+    // pontos
+    for(let key in pontos){
+        if(pontos[key]){
+            ctx.fillStyle = key==="drop"?"orange":
+                            key==="glider"?"green":
+                            key==="busStart"?"blue":
+                            key==="busEnd"?"red":"white";
 
-    drawPoint(j,"orange");
+            ctx.beginPath();
+            ctx.arc(pontos[key].x,pontos[key].y,6,0,Math.PI*2);
+            ctx.fill();
+        }
+    }
 
-    ctx.strokeStyle="yellow";
-    ctx.beginPath();
-    ctx.moveTo(j.x,j.y);
-    ctx.lineTo(drop.x,drop.y);
-    ctx.stroke();
-
-    // HUD
-    document.getElementById("hud").innerHTML =
-      "Tempo: "+best.sim.time.toFixed(1)+"s<br>"+
-      "Erro: "+best.sim.dist.toFixed(0)+"px<br>"+
-      (best.sim.dist<50?"🔥 PERFECT":"⚠️ Ajustar");
-  }
-
-  ctx.restore();
-
-  requestAnimationFrame(draw);
+    requestAnimationFrame(draw);
 }
 
-// 🔥 GARANTE QUE O MAPA CARREGOU
-mapImg.onload = () => {
-  document.getElementById("hud").innerText = "Mapa carregado ✔";
-  draw();
-};
+function resetar(){
+    pontos = {
+        busStart:null,
+        busEnd:null,
+        drop:null,
+        glider:null
+    };
+    document.getElementById("hud").innerHTML="HUD";
+}
 
-mapImg.onerror = () => {
-  document.getElementById("hud").innerText = "ERRO ao carregar mapa ❌";
-};
+// start
+img.onload = draw;
 </script>
 
 </body>
