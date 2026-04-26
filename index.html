@@ -90,7 +90,7 @@ function reset() {
     desenhar();
 }
 
-// cálculo PRO (ponto de afundar + tempo)
+// cálculo PRO (com ajuste lateral realista)
 function calcularDropPro(busStart, busEnd, drop) {
     const dx = busEnd.x - busStart.x;
     const dy = busEnd.y - busStart.y;
@@ -100,10 +100,15 @@ function calcularDropPro(busStart, busEnd, drop) {
     const nx = dx / length;
     const ny = dy / length;
 
-    const DISTANCIA_IDEAL = 280;
+    // perpendicular (simula drift do glider)
+    const px = -ny;
+    const py = nx;
 
-    const afundarX = drop.x - nx * DISTANCIA_IDEAL;
-    const afundarY = drop.y - ny * DISTANCIA_IDEAL;
+    const DISTANCIA_BASE = 280;
+    const AJUSTE_LATERAL = 60;
+
+    const afundarX = drop.x - nx * DISTANCIA_BASE + px * AJUSTE_LATERAL;
+    const afundarY = drop.y - ny * DISTANCIA_BASE + py * AJUSTE_LATERAL;
 
     const distancia = Math.sqrt(
         (drop.x - afundarX) ** 2 +
@@ -118,26 +123,54 @@ function calcularDropPro(busStart, busEnd, drop) {
     };
 }
 
+// desenhar setas do ônibus
+function desenharSeta(x, y, dx, dy) {
+    const angle = Math.atan2(dy, dx);
+
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.rotate(angle);
+
+    ctx.fillStyle = "white";
+
+    ctx.beginPath();
+    ctx.moveTo(0, 0);
+    ctx.lineTo(-8, -4);
+    ctx.lineTo(-8, 4);
+    ctx.closePath();
+    ctx.fill();
+
+    ctx.restore();
+}
+
 // desenhar tudo
 function desenhar() {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     ctx.drawImage(mapa, 0, 0, canvas.width, canvas.height);
 
+    // direção do ônibus (com setas)
     if (busStart && busEnd) {
-        ctx.strokeStyle = "#00ffff";
-        ctx.lineWidth = 2;
-        ctx.beginPath();
-        ctx.moveTo(busStart.x, busStart.y);
-        ctx.lineTo(busEnd.x, busEnd.y);
-        ctx.stroke();
+        const dx = busEnd.x - busStart.x;
+        const dy = busEnd.y - busStart.y;
+
+        const steps = 25;
+
+        for (let i = 0; i < steps; i++) {
+            const t = i / steps;
+
+            const x = busStart.x + dx * t;
+            const y = busStart.y + dy * t;
+
+            desenharSeta(x, y, dx, dy);
+        }
     }
 
+    // cálculo drop
     if (busStart && busEnd && drop) {
         const calc = calcularDropPro(busStart, busEnd, drop);
-
         const afundar = calc.afundar;
 
-        // linha amarela (principal)
+        // linha amarela
         ctx.strokeStyle = "yellow";
         ctx.lineWidth = 3;
         ctx.beginPath();
@@ -145,19 +178,19 @@ function desenhar() {
         ctx.lineTo(drop.x, drop.y);
         ctx.stroke();
 
-        // ponto afundar
+        // ponto de afundar (principal)
         ctx.fillStyle = "yellow";
         ctx.beginPath();
         ctx.arc(afundar.x, afundar.y, 8, 0, Math.PI * 2);
         ctx.fill();
 
-        // drop final
+        // ponto final (drop)
         ctx.fillStyle = "red";
         ctx.beginPath();
         ctx.arc(drop.x, drop.y, 8, 0, Math.PI * 2);
         ctx.fill();
 
-        // tempo
+        // tempo do glider
         ctx.fillStyle = "white";
         ctx.font = "bold 14px Arial";
         ctx.fillText(calc.tempo + "s", afundar.x + 10, afundar.y - 10);
